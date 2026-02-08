@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ambulance Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+            border: 1px solid #ddd;
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            box-sizing: border-box;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+            margin-right: 0.5rem;
+        }
+
+        button {
+            background-color: #dc3545;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #c82333;
+        }
+
+        .error {
+            color: red;
+            margin-top: 0.5rem;
+        }
+
+        .success {
+            color: green;
+            margin-top: 0.5rem;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        /* Table Styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 0.75rem;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background-color: #f8f9fa;
+        }
+
+        .rank-1 {
+            background-color: #d4edda;
+            border: 2px solid #28a745;
+        }
+
+        .score {
+            font-weight: bold;
+            color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Ambulance Dispatch Interface</h1>
+
+    <!-- Login Section -->
+    <div id="loginSection" class="section">
+        <h2>Ambulance Login</h2>
+        <label for="loginRegNum">Registration Number</label>
+        <input type="text" id="loginRegNum" placeholder="e.g., TS-08-1234">
+        <button onclick="handleLogin()">Login</button>
+        <div id="loginMessage"></div>
+        <div id="registerPrompt" class="hidden" style="margin-top: 1rem;">
+            <p>Ambulance not found.</p>
+            <button onclick="showRegister()">Register New Ambulance</button>
+        </div>
+    </div>
+
+    <!-- Register Section -->
+    <div id="registerSection" class="section hidden">
+        <h2>Register Ambulance</h2>
+        <form id="registerForm" onsubmit="handleRegister(event)">
+            <label>Registration Number</label>
+            <input type="text" name="registration_number" required>
+
+            <label>Organization</label>
+            <input type="text" name="organization" placeholder="e.g., GVK EMRI" required>
+
+            <label>Latitude</label>
+            <input type="number" step="any" name="latitude" required>
+
+            <label>Longitude</label>
+            <input type="number" step="any" name="longitude" required>
+
+            <button type="submit">Register & Login</button>
+        </form>
+        <div id="registerMessage"></div>
+    </div>
+
+    <!-- Dashboard/Patient Form Section -->
+    <div id="dashboardSection" class="section hidden">
+        <h2>Find Hospitals</h2>
+        <p>Ambulance ID: <span id="displayAmbulanceId" style="font-weight: bold;"></span></p>
+        <p>Registration: <span id="displayRegNum"></span></p>
+
+        <form id="decisionForm" onsubmit="handleDecisionRequest(event)">
+            <div style="display: flex; gap: 2rem;">
+                <div style="flex: 1;">
+                    <h3>Patient Details</h3>
+                    <label>Age</label>
+                    <input type="number" name="patient_age" required>
+
+                    <label>Gender</label>
+                    <select name="patient_gender">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+
+                    <label>Severity Level (1-5)</label>
+                    <input type="number" name="severity_level" min="1" max="5" required>
+
+                    <div style="margin-bottom: 1rem;">
+                        <input type="checkbox" name="requires_icu" id="reqICU">
+                        <label for="reqICU" style="display:inline;">Requires ICU</label>
+                    </div>
+
+                    <label>Requires Specialty (Optional)</label>
+                    <input type="text" name="requires_specialty" placeholder="e.g., Cardiology">
+                </div>
+
+                <div style="flex: 1;">
+                    <h3>Ambulance Location & Constraints</h3>
+                    <label>Current Latitude</label>
+                    <input type="number" step="any" name="latitude" id="currentLat" required>
+
+                    <label>Current Longitude</label>
+                    <input type="number" step="any" name="longitude" id="currentLng" required>
+
+                    <label>Max Distance (km)</label>
+                    <input type="number" name="max_distance_km" value="15" required>
+
+                    <label>Max Results</label>
+                    <input type="number" name="max_results" value="5" required>
+                </div>
+            </div>
+
+            <button type="submit" style="width: 100%; font-size: 1.1rem;">Find Best Hospitals</button>
+        </form>
+        <div id="decisionMessage"></div>
+
+        <!-- Results -->
+        <div id="resultsArea" class="hidden">
+            <h3>Recommended Hospitals</h3>
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Hospital</th>
+                        <th>Distance / ETA</th>
+                        <th>Score</th>
+                        <th>Status Snapshot</th>
+                        <th>Reasoning</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentAmbulance = null;
+        const API_BASE = 'http://localhost:3000'; // Adjust if needed
+
+        // Elements
+        const loginSection = document.getElementById('loginSection');
+        const registerSection = document.getElementById('registerSection');
+        const dashboardSection = document.getElementById('dashboardSection');
+        const loginMessage = document.getElementById('loginMessage');
+        const registerPrompt = document.getElementById('registerPrompt');
+        const resultsArea = document.getElementById('resultsArea');
+        const resultsTableBody = document.querySelector('#resultsTable tbody');
+
+        function showSection(sectionId) {
+            [loginSection, registerSection, dashboardSection].forEach(el => el.classList.add('hidden'));
+            document.getElementById(sectionId).classList.remove('hidden');
+        }
+
+        async function handleLogin() {
+            const regNum = document.getElementById('loginRegNum').value;
+            if (!regNum) return;
+
+            loginMessage.textContent = 'Logging in...';
+            loginMessage.className = '';
+            registerPrompt.classList.add('hidden');
+
+            try {
+                const res = await fetch(`${API_BASE}/ambulances/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ registration_number: regNum })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setLoggedIn(data);
+                } else {
+                    if (res.status === 401) {
+                        loginMessage.textContent = 'Ambulance not registered.';
+                        loginMessage.className = 'error';
+                        registerPrompt.classList.remove('hidden');
+                    } else {
+                        throw new Error('Login failed');
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                loginMessage.textContent = 'Error connecting to server.';
+                loginMessage.className = 'error';
+            }
+        }
+
+        function showRegister() {
+            showSection('registerSection');
+            // Pre-fill registration number if user typed it
+            document.querySelector('#registerForm [name="registration_number"]').value =
+                document.getElementById('loginRegNum').value;
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+
+            ['latitude', 'longitude'].forEach(k => payload[k] = Number(payload[k]));
+
+            const msgDiv = document.getElementById('registerMessage');
+            msgDiv.textContent = 'Registering...';
+            msgDiv.className = '';
+
+            try {
+                const res = await fetch(`${API_BASE}/ambulances/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const loginData = {
+                        ...payload,
+                        ambulance_id: data.ambulance_id
+                    };
+                    setLoggedIn(loginData);
+                } else {
+                    const errFn = await res.json();
+                    msgDiv.textContent = 'Registration failed: ' + (errFn.error || 'Unknown error');
+                    msgDiv.className = 'error';
+                }
+            } catch (err) {
+                console.error(err);
+                msgDiv.textContent = 'Error registering.';
+                msgDiv.className = 'error';
+            }
+        }
+
+        function setLoggedIn(data) {
+            currentAmbulance = data;
+            document.getElementById('displayAmbulanceId').textContent = data.ambulance_id;
+            document.getElementById('displayRegNum').textContent = data.registration_number;
+
+            // Pre-fill location if available
+            if (data.latitude) document.getElementById('currentLat').value = data.latitude;
+            if (data.longitude) document.getElementById('currentLng').value = data.longitude;
+
+            showSection('dashboardSection');
+
+            // If we don't have lat/long (e.g. from login), fetch them
+            if (!data.latitude) {
+                fetchDetails(data.ambulance_id);
+            }
+        }
+
+        async function fetchDetails(id) {
+            try {
+                const res = await fetch(`${API_BASE}/ambulances/${id}`);
+                if (res.ok) {
+                    const fullData = await res.json();
+                    currentAmbulance = { ...currentAmbulance, ...fullData };
+                    if (fullData.latitude) document.getElementById('currentLat').value = fullData.latitude;
+                    if (fullData.longitude) document.getElementById('currentLng').value = fullData.longitude;
+                }
+            } catch (e) { console.log('Could not fetch full details', e); }
+        }
+
+        async function handleDecisionRequest(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const formEntries = Object.fromEntries(formData.entries());
+
+            // Construct hierarchical payload
+            const payload = {
+                request_id: crypto.randomUUID(),
+                ambulance: {
+                    ambulance_id: currentAmbulance.ambulance_id,
+                    latitude: Number(formEntries.latitude),
+                    longitude: Number(formEntries.longitude)
+                },
+                patient: {
+                    patient_age: Number(formEntries.patient_age),
+                    patient_gender: formEntries.patient_gender,
+                    severity_level: Number(formEntries.severity_level),
+                    requires_icu: !!formEntries.requires_icu, // checkbox presence check
+                    requires_specialty: formEntries.requires_specialty || null
+                },
+                constraints: {
+                    max_distance_km: Number(formEntries.max_distance_km),
+                    max_results: Number(formEntries.max_results)
+                }
+            };
+
+            const msgDiv = document.getElementById('decisionMessage');
+            msgDiv.textContent = 'Finding hospitals...';
+            msgDiv.className = '';
+            resultsArea.classList.add('hidden');
+            resultsTableBody.innerHTML = '';
+
+            try {
+                const res = await fetch(`${API_BASE}/agent/decide`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    msgDiv.textContent = `Found ${data.recommendations.length} hospitals. Best option: ${data.recommendations[0]?.name || 'None'}`;
+                    msgDiv.className = 'success';
+                    renderResults(data.recommendations);
+                } else {
+                    const errFn = await res.json();
+                    msgDiv.textContent = 'Decision failed: ' + (errFn.error || 'Unknown error');
+                    msgDiv.className = 'error';
+                }
+            } catch (err) {
+                console.error(err);
+                msgDiv.textContent = 'Error connecting to server.';
+                msgDiv.className = 'error';
+            }
+        }
+
+        function renderResults(hospitals) {
+            resultsArea.classList.remove('hidden');
+
+            if (!hospitals || hospitals.length === 0) {
+                resultsTableBody.innerHTML = '<tr><td colspan="6">No hospitals found matching constraints.</td></tr>';
+                return;
+            }
+
+            hospitals.forEach((h, index) => {
+                const tr = document.createElement('tr');
+                if (index === 0) tr.className = 'rank-1'; // Highlight best
+
+                // Reasoning bullets (Fix: 'reasoning' -> 'reasons')
+                const reasonsList = h.reasons ? h.reasons.map(r => `<li>${r}</li>`).join('') : '';
+
+                tr.innerHTML = `
+                    <td style="text-align:center; font-weight:bold;">#${index + 1}</td>
+                    <td>
+                        <strong>${h.name || 'Hospital ' + h.hospital_id.substring(0, 8)}</strong><br>
+                        <small>ID: ${h.hospital_id}</small>
+                    </td>
+                    <td>
+                        ${h.distance_km.toFixed(2)} km<br>
+                        ~${Math.round(h.eta_minutes)} mins
+                    </td>
+                    <td class="score">${h.score.toFixed(2)}</td>
+                    <td>
+                        <small>
+                            Beds: ${h.snapshot.available_beds}<br>
+                            ICU: ${h.snapshot.available_icu_beds}<br>
+                            Status: <b>${h.snapshot.status}</b>
+                        </small>
+                    </td>
+                    <td>
+                        <ul style="margin:0; padding-left:1.2rem;">${reasonsList}</ul>
+                    </td>
+                `;
+                resultsTableBody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+            border: 1px solid #ddd;
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .error {
+            color: red;
+            margin-top: 0.5rem;
+        }
+
+        .success {
+            color: green;
+            margin-top: 0.5rem;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Hospital Coordination Demo</h1>
+
+    <!-- Login Section -->
+    <div id="loginSection" class="section">
+        <h2>Login</h2>
+        <label for="loginId">Hospital ID</label>
+        <input type="text" id="loginId" placeholder="Enter Hospital ID">
+        <button onclick="handleLogin()">Login</button>
+        <div id="loginMessage"></div>
+        <div id="registerPrompt" class="hidden" style="margin-top: 1rem;">
+            <p>Hospital not found.</p>
+            <button onclick="showRegister()">Register New Hospital</button>
+        </div>
+    </div>
+
+    <!-- Register Section -->
+    <div id="registerSection" class="section hidden">
+        <h2>Register Hospital</h2>
+        <form id="registerForm" onsubmit="handleRegister(event)">
+            <label>Name</label><input type="text" name="name" required>
+
+            <label>Type</label><input type="text" name="type" placeholder="e.g., General, Trauma" required>
+
+            <label>Latitude</label><input type="number" step="any" name="latitude" required>
+
+            <label>Longitude</label><input type="number" step="any" name="longitude" required>
+
+            <label>Address</label><input type="text" name="address" required>
+
+            <label>City</label><input type="text" name="city" required>
+
+            <label>Total Beds</label><input type="number" name="total_beds" required>
+
+            <label>ICU Beds</label><input type="number" name="icu_beds" required>
+
+            <label>Emergency Level Supported</label><input type="text" name="emergency_level_supported" required>
+
+            <label>Contact Number</label><input type="text" name="contact_number" required>
+
+            <button type="submit">Resgister & Login</button>
+        </form>
+        <div id="registerMessage"></div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboardSection" class="section hidden">
+        <h2>Dashboard</h2>
+        <p>Logged in as ID: <span id="displayHospitalId" style="font-weight: bold;"></span></p>
+        <p>Hospital Name: <span id="displayHospitalName"></span></p>
+
+        <h3>Update Live State</h3>
+        <form id="updateStateForm" onsubmit="handleStateUpdate(event)">
+            <label>Available Beds (Number)</label>
+            <input type="number" name="available_beds" required>
+
+            <label>Available ICU Beds (Number)</label>
+            <input type="number" name="available_icu_beds" required>
+
+            <label>Current Load Score (Number)</label>
+            <input type="number" name="current_load_score" required>
+
+            <label>Staff Status</label>
+            <select name="staff_status" required>
+                <option value="adequate">Adequate</option>
+                <option value="strained">Strained</option>
+                <option value="critical">Critical</option>
+            </select>
+
+            <label>Incoming Ambulances Count (Number)</label>
+            <input type="number" name="incoming_ambulances_count" required>
+
+            <label>Status</label>
+            <select name="status" required>
+                <option value="NORMAL">NORMAL</option>
+                <option value="CROWDED">CROWDED</option>
+                <option value="OVERLOADED">OVERLOADED</option>
+                <option value="OFFLINE">OFFLINE</option>
+            </select>
+
+            <button type="submit">Update State</button>
+        </form>
+        <div id="updateMessage"></div>
+    </div>
+
+    <script>
+        // State
+        let currentHospital = null;
+        // Use full URL if not served from same origin, or relative if served from same origin. 
+        // Assuming localhost:3000 for backend if running locally
+        const API_BASE = 'http://localhost:3000';
+
+        // Elements
+        const loginSection = document.getElementById('loginSection');
+        const registerSection = document.getElementById('registerSection');
+        const dashboardSection = document.getElementById('dashboardSection');
+        const loginMessage = document.getElementById('loginMessage');
+        const registerPrompt = document.getElementById('registerPrompt');
+        const displayHospitalId = document.getElementById('displayHospitalId');
+        const displayHospitalName = document.getElementById('displayHospitalName');
+
+        function showSection(sectionId) {
+            [loginSection, registerSection, dashboardSection].forEach(el => el.classList.add('hidden'));
+            document.getElementById(sectionId).classList.remove('hidden');
+        }
+
+        async function handleLogin() {
+            const id = document.getElementById('loginId').value;
+            if (!id) return;
+
+            loginMessage.textContent = 'Verifying ID...';
+            loginMessage.className = '';
+            registerPrompt.classList.add('hidden');
+
+            try {
+                // Using existing backend route: GET /hospitals/:id
+                const res = await fetch(`${API_BASE}/hospitals/${id}`);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setLoggedIn(data);
+                } else {
+                    if (res.status === 404) {
+                        loginMessage.textContent = 'Hospital ID not registered.';
+                        loginMessage.className = 'error';
+                        registerPrompt.classList.remove('hidden');
+                    } else {
+                        throw new Error('Login fetch failed');
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                loginMessage.textContent = 'Error connecting to server.';
+                loginMessage.className = 'error';
+            }
+        }
+
+        function showRegister() {
+            showSection('registerSection');
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+
+            // Ensure proper number types
+            ['latitude', 'longitude', 'total_beds', 'icu_beds'].forEach(k => {
+                if (payload[k]) payload[k] = Number(payload[k]);
+            });
+
+            const msgDiv = document.getElementById('registerMessage');
+            msgDiv.textContent = 'Registering...';
+            msgDiv.className = '';
+
+            try {
+                const res = await fetch(`${API_BASE}/hospitals/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json(); // { message, hospital_id }
+                    // Auto-login logic
+                    // We construct the login object manually since register response is minimal
+                    const loginData = {
+                        ...payload,
+                        hospital_id: data.hospital_id
+                    };
+                    setLoggedIn(loginData);
+                } else {
+                    const errFn = await res.json();
+                    msgDiv.textContent = 'Registration failed: ' + (errFn.error || 'Unknown error');
+                    msgDiv.className = 'error';
+                }
+            } catch (err) {
+                console.error(err);
+                msgDiv.textContent = 'Error registering.';
+                msgDiv.className = 'error';
+            }
+        }
+
+        function setLoggedIn(data) {
+            currentHospital = data;
+            displayHospitalId.textContent = data.hospital_id;
+            displayHospitalName.textContent = data.name;
+            showSection('dashboardSection');
+        }
+
+        async function handleStateUpdate(e) {
+            e.preventDefault();
+            if (!currentHospital) return;
+
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+
+            // Add required fields
+            payload.hospital_id = currentHospital.hospital_id;
+
+            // Backend handles heartbeat, but user requested JS to set it too
+            payload.last_heartbeat_at = Date.now();
+
+            // Include lat/long for backend processing (from login/register data)
+            payload.latitude = currentHospital.latitude || 0;
+            payload.longitude = currentHospital.longitude || 0;
+
+            const msgDiv = document.getElementById('updateMessage');
+            msgDiv.textContent = 'Updating...';
+            msgDiv.className = '';
+
+            try {
+                const res = await fetch(`${API_BASE}/hospital/state/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    msgDiv.textContent = 'State updated successfully!';
+                    msgDiv.className = 'success';
+                } else {
+                    const errFn = await res.json();
+                    msgDiv.textContent = 'Update failed: ' + (errFn.error || 'Unknown error');
+                    msgDiv.className = 'error';
+                }
+            } catch (err) {
+                console.error(err);
+                msgDiv.textContent = 'Error connecting to server.';
+                msgDiv.className = 'error';
+            }
+        }
+    </script>
+</body>
+
+</html>
