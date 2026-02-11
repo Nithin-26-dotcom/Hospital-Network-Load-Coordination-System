@@ -109,6 +109,7 @@
             margin-top: 2rem;
             border: 1px solid #ccc;
             border-radius: 4px;
+            /* Remove display:none issues */
         }
     </style>
 </head>
@@ -160,80 +161,140 @@
 
     <!-- Dashboard/Patient Form Section -->
     <div id="dashboardSection" class="section hidden">
-        <h2>Find Hospitals</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2>Ambulance Dashboard</h2>
+            <div style="text-align: right;">
+                <span id="displayStatus"
+                    style="padding: 0.5rem; background: #eee; border-radius: 4px; font-weight: bold;">IDLE</span>
+                <button onclick="handleLogout()"
+                    style="background-color: #6c757d; margin-left: 1rem; padding: 0.5rem;">Logout</button>
+            </div>
+        </div>
+
         <p>Ambulance ID: <span id="displayAmbulanceId" style="font-weight: bold;"></span></p>
-        <p>Registration: <span id="displayRegNum"></span></p>
 
-        <form id="decisionForm" onsubmit="handleDecisionRequest(event)">
-            <div style="display: flex; gap: 2rem;">
-                <div style="flex: 1;">
-                    <h3>Patient Details</h3>
-                    <label>Age</label>
-                    <input type="number" name="patient_age" required>
+        <!-- Dynamic Content Based on Status -->
+        <div id="lifecycleContainer">
 
-                    <label>Gender</label>
-                    <select name="patient_gender">
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                    </select>
+            <!-- STATE: IDLE -->
+            <div id="view-IDLE" class="lifecycle-view hidden">
+                <h3>Start New Case</h3>
+                <form id="decisionForm" onsubmit="handleDecisionRequest(event)">
+                    <div style="display: flex; gap: 2rem;">
+                        <div style="flex: 1;">
+                            <h4>Patient Details</h4>
+                            <label>Age</label>
+                            <input type="number" name="patient_age" required>
 
-                    <label>Severity Level (1-5)</label>
-                    <input type="number" name="severity_level" min="1" max="5" required>
+                            <label>Gender</label>
+                            <select name="patient_gender">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
 
-                    <div style="margin-bottom: 1rem;">
-                        <input type="checkbox" name="requires_icu" id="reqICU">
-                        <label for="reqICU" style="display:inline;">Requires ICU</label>
+                            <label>Severity Level (1-5)</label>
+                            <input type="number" name="severity_level" min="1" max="5" required>
+
+                            <div style="margin-bottom: 1rem;">
+                                <input type="checkbox" name="requires_icu" id="reqICU">
+                                <label for="reqICU" style="display:inline;">Requires ICU</label>
+                            </div>
+
+                            <label>Requires Specialty (Optional)</label>
+                            <input type="text" name="requires_specialty" placeholder="e.g., Cardiology">
+                        </div>
+
+                        <div style="flex: 1;">
+                            <h4>Location & Constraints</h4>
+                            <label>Current Latitude</label>
+                            <input type="number" step="any" name="latitude" id="currentLat" required>
+
+                            <label>Current Longitude</label>
+                            <input type="number" step="any" name="longitude" id="currentLng" required>
+
+                            <label>Max Distance (km)</label>
+                            <input type="number" name="max_distance_km" value="15" required>
+
+                            <label>Max Results</label>
+                            <input type="number" name="max_results" value="5" required>
+                        </div>
                     </div>
 
-                    <label>Requires Specialty (Optional)</label>
-                    <input type="text" name="requires_specialty" placeholder="e.g., Cardiology">
-                </div>
-
-                <div style="flex: 1;">
-                    <h3>Ambulance Location & Constraints</h3>
-                    <label>Current Latitude</label>
-                    <input type="number" step="any" name="latitude" id="currentLat" required>
-
-                    <label>Current Longitude</label>
-                    <input type="number" step="any" name="longitude" id="currentLng" required>
-
-                    <label>Max Distance (km)</label>
-                    <input type="number" name="max_distance_km" value="15" required>
-
-                    <label>Max Results</label>
-                    <input type="number" name="max_results" value="5" required>
-                </div>
+                    <button type="submit" style="width: 100%; font-size: 1.1rem; background-color: #007bff;">Find Best
+                        Hospitals</button>
+                </form>
+                <div id="decisionMessage"></div>
             </div>
 
-            <button type="submit" style="width: 100%; font-size: 1.1rem;">Find Best Hospitals</button>
-        </form>
-        <div id="decisionMessage"></div>
+            <!-- STATE: CASE_CREATED (Results) -->
+            <div id="view-CASE_CREATED" class="lifecycle-view hidden">
+                <h3>Select Destination Hospital</h3>
+                <div id="resultsArea">
+                    <table id="resultsTable">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Hospital</th>
+                                <th>Distance / ETA</th>
+                                <th>Score</th>
+                                <th>Status Snapshot</th>
+                                <th>Reasoning</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button onclick="cancelCase()" style="margin-top: 1rem; background-color: #6c757d;">Cancel Case</button>
+            </div>
 
-        <!-- Results -->
-        <div id="resultsArea" class="hidden">
-            <h3>Recommended Hospitals</h3>
-            <table id="resultsTable">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Hospital</th>
-                        <th>Distance / ETA</th>
-                        <th>Score</th>
-                        <th>Status Snapshot</th>
-                        <th>Reasoning</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-            <div id="map"></div>
+            <!-- STATE: HOSPITAL_SELECTED -->
+            <div id="view-HOSPITAL_SELECTED" class="lifecycle-view hidden">
+                <h3 style="color: #007bff;">Hospital Selected!</h3>
+                <p>Target: <b id="lbl-target-hospital">...</b></p>
+                <p>Prepare for transport.</p>
+                <button onclick="updateStatus('EN_ROUTE')"
+                    style="width: 100%; font-size: 1.2rem; background-color: #28a745;">Start Route 🚑</button>
+                <button onclick="cancelCase()" style="margin-top: 1rem; background-color: #dc3545;">Cancel</button>
+            </div>
+
+            <!-- STATE: EN_ROUTE -->
+            <div id="view-EN_ROUTE" class="lifecycle-view hidden">
+                <h3 style="color: #fd7e14;">En Route to Hospital</h3>
+                <!-- Map will be appended here dynamically -->
+                <button onclick="updateStatus('ARRIVED')"
+                    style="width: 100%; font-size: 1.2rem; background-color: #17a2b8;">Mark Arrived 📍</button>
+            </div>
+
+            <!-- STATE: ARRIVED -->
+            <div id="view-ARRIVED" class="lifecycle-view hidden">
+                <h3 style="color: #28a745;">Arrived at Hospital</h3>
+                <p>Transferring patient...</p>
+                <button onclick="updateStatus('PATIENT_ADMITTED')"
+                    style="width: 100%; font-size: 1.2rem; background-color: #28a745;">Patient Admitted ✅</button>
+            </div>
+
+            <!-- STATE: PATIENT_ADMITTED -->
+            <div id="view-PATIENT_ADMITTED" class="lifecycle-view hidden">
+                <h3 style="color: #6f42c1;">Mission Complete</h3>
+                <p>Patient successfully admitted.</p>
+                <button onclick="updateStatus('COMPLETED')"
+                    style="width: 100%; font-size: 1.2rem; background-color: #007bff;">Complete & Return to Idle
+                    🏁</button>
+            </div>
+
         </div>
+
+        <!-- Shared Map Container (moved out of specific views if needed, or mapped dynamically) -->
+        <!-- For now, we only use map in EN_ROUTE or results. Let's keep a generic map container below -->
+        <div id="map" class="hidden"></div>
     </div>
 
     <script>
         // State
         let currentAmbulance = null;
-        const API_BASE = 'http://localhost:3000'; // Adjust if needed
+        const API_BASE = 'http://localhost:3000';
 
         // Elements
         const loginSection = document.getElementById('loginSection');
@@ -241,24 +302,86 @@
         const dashboardSection = document.getElementById('dashboardSection');
         const loginMessage = document.getElementById('loginMessage');
         const registerPrompt = document.getElementById('registerPrompt');
-        const resultsArea = document.getElementById('resultsArea');
-        const resultsTableBody = document.querySelector('#resultsTable tbody');
+
+        // Map Globals
+        let map = null;
+        let routeLayer = null;
+        let markers = [];
+        let ambulanceMarker = null;
+
+        // Custom Ambulance Icon
+        // Use a standard public icon valid for data URI usage to avoid btoa issues with emojis
+        const ambulanceIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/263/263058.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
+        });
+
+        // Initialize Map
+        function initMap() {
+            if (map) return;
+            map = L.map('map').setView([17.385, 78.486], 13); // Default to Hyderabad
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Animate ambulance along route (Vanishing Path)
+        let animationInterval = null;
+
+        function startAnimation(routeGeometry) {
+            if (animationInterval) clearInterval(animationInterval);
+
+            // OSRM returns [lng, lat], Leaflet needs [lat, lng]
+            // We need to store original for slicing, but converted for display
+            const coords = routeGeometry.coordinates;
+            let step = 0;
+            const totalSteps = coords.length;
+
+            animationInterval = setInterval(() => {
+                if (step >= totalSteps) {
+                    clearInterval(animationInterval);
+                    return;
+                }
+
+                const [lng, lat] = coords[step];
+                const nextPos = [lat, lng];
+
+                // 1. Move Ambulance Marker
+                if (ambulanceMarker) {
+                    ambulanceMarker.setLatLng(nextPos);
+                    map.panTo(nextPos);
+                }
+
+                // 2. Vanish Path (Update Polyline)
+                // Slice from current step to end
+                const remainingCoords = coords.slice(step);
+                // Convert to LatLngs for Leaflet
+                const leafletCoords = remainingCoords.map(c => [c[1], c[0]]);
+
+                if (routeLayer) {
+                    routeLayer.setLatLngs(leafletCoords);
+                }
+
+                step++;
+            }, 1000); // Move every second
+        }
 
         function showSection(sectionId) {
             [loginSection, registerSection, dashboardSection].forEach(el => el.classList.add('hidden'));
             document.getElementById(sectionId).classList.remove('hidden');
         }
 
+        // --- AUTH ---
+
         async function handleLogin() {
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
-
             if (!username || !password) return;
 
             loginMessage.textContent = 'Logging in...';
-            loginMessage.className = '';
-            registerPrompt.classList.add('hidden');
-
             try {
                 const res = await fetch(`${API_BASE}/ambulances/login`, {
                     method: 'POST',
@@ -269,36 +392,25 @@
                 if (res.ok) {
                     const data = await res.json();
                     setLoggedIn(data);
+                } else if (res.status === 401) {
+                    loginMessage.textContent = 'Invalid credentials.';
+                    registerPrompt.classList.remove('hidden');
                 } else {
-                    if (res.status === 401) {
-                        loginMessage.textContent = 'Invalid username or password.';
-                        loginMessage.className = 'error';
-                        registerPrompt.classList.remove('hidden');
-                    } else {
-                        throw new Error('Login failed');
-                    }
+                    throw new Error('Login failed');
                 }
             } catch (err) {
                 console.error(err);
-                loginMessage.textContent = 'Error connecting to server.';
-                loginMessage.className = 'error';
+                loginMessage.textContent = 'Error connecting.';
             }
         }
 
-        function showRegister() {
-            showSection('registerSection');
-        }
+        function showRegister() { showSection('registerSection'); }
 
         async function handleRegister(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
             const payload = Object.fromEntries(formData.entries());
-
             ['latitude', 'longitude'].forEach(k => payload[k] = Number(payload[k]));
-
-            const msgDiv = document.getElementById('registerMessage');
-            msgDiv.textContent = 'Registering...';
-            msgDiv.className = '';
 
             try {
                 const res = await fetch(`${API_BASE}/ambulances/register`, {
@@ -306,41 +418,36 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-
                 if (res.ok) {
                     const data = await res.json();
-                    const loginData = {
-                        ...payload,
-                        ambulance_id: data.ambulance_id
-                    };
-                    setLoggedIn(loginData);
+                    setLoggedIn({ ...payload, ambulance_id: data.ambulance_id, status: 'IDLE' });
                 } else {
-                    const errFn = await res.json();
-                    msgDiv.textContent = 'Registration failed: ' + (errFn.error || 'Unknown error');
-                    msgDiv.className = 'error';
+                    const err = await res.json();
+                    document.getElementById('registerMessage').textContent = err.error || 'Failed';
                 }
-            } catch (err) {
-                console.error(err);
-                msgDiv.textContent = 'Error registering.';
-                msgDiv.className = 'error';
-            }
+            } catch (err) { console.error(err); }
+        }
+
+        function handleLogout() {
+            currentAmbulance = null;
+            showSection('loginSection');
         }
 
         function setLoggedIn(data) {
             currentAmbulance = data;
             document.getElementById('displayAmbulanceId').textContent = data.ambulance_id;
-            document.getElementById('displayRegNum').textContent = data.registration_number;
 
-            // Pre-fill location if available
-            if (data.latitude) document.getElementById('currentLat').value = data.latitude;
-            if (data.longitude) document.getElementById('currentLng').value = data.longitude;
-
-            showSection('dashboardSection');
-
-            // If we don't have lat/long (e.g. from login), fetch them
-            if (!data.latitude) {
+            // Initial Location Check
+            if (data.latitude) {
+                document.getElementById('currentLat').value = data.latitude;
+                document.getElementById('currentLng').value = data.longitude;
+            } else {
                 fetchDetails(data.ambulance_id);
             }
+
+            // Render correct UI based on status
+            renderLifecycleUI();
+            showSection('dashboardSection');
         }
 
         async function fetchDetails(id) {
@@ -349,18 +456,168 @@
                 if (res.ok) {
                     const fullData = await res.json();
                     currentAmbulance = { ...currentAmbulance, ...fullData };
-                    if (fullData.latitude) document.getElementById('currentLat').value = fullData.latitude;
-                    if (fullData.longitude) document.getElementById('currentLng').value = fullData.longitude;
+                    if (fullData.latitude) {
+                        document.getElementById('currentLat').value = fullData.latitude;
+                        document.getElementById('currentLng').value = fullData.longitude;
+                    }
+                    renderLifecycleUI(); // Re-render in case status changed
                 }
-            } catch (e) { console.log('Could not fetch full details', e); }
+            } catch (e) { console.log('Fetch details failed', e); }
         }
+
+        // --- LIFECYCLE MANAGEMENT ---
+
+        function renderLifecycleUI() {
+            const status = currentAmbulance.status || 'IDLE';
+            document.getElementById('displayStatus').textContent = status;
+
+            // Hide all views
+            document.querySelectorAll('.lifecycle-view').forEach(el => el.classList.add('hidden'));
+
+            // Show current view
+            const activeView = document.getElementById(`view-${status}`);
+            if (activeView) {
+                activeView.classList.remove('hidden');
+            } else {
+                // Handle unknown status
+                const idleView = document.getElementById('view-IDLE');
+                if (idleView) idleView.classList.remove('hidden');
+                if (!document.getElementById('temp-reset-btn')) {
+                    const btn = document.createElement('button');
+                    btn.id = 'temp-reset-btn';
+                    btn.textContent = `Reset Status from ${status} to IDLE`;
+                    btn.onclick = () => updateStatus('IDLE');
+                    btn.style.backgroundColor = '#dc3545';
+                    btn.style.width = '100%';
+                    btn.style.marginTop = '1rem';
+                    idleView.prepend(btn);
+                }
+            }
+
+            // Map Logic
+            const mapContainer = document.getElementById('map');
+
+            if (status === 'HOSPITAL_SELECTED' || status === 'EN_ROUTE') {
+                document.getElementById('lbl-target-hospital').textContent = currentAmbulance.assigned_hospital_id || 'Unknown';
+
+                // Show Map
+                mapContainer.classList.remove('hidden');
+
+                // Move map to the active view logic
+                if (activeView && !activeView.contains(mapContainer)) {
+                    activeView.appendChild(mapContainer);
+                }
+
+                // Initialize and Draw Route
+                // Use setTimeout to allow DOM to update (display:block) before Leaflet resize
+                setTimeout(() => {
+                    initMap();
+                    map.invalidateSize();
+                    drawRouteToHospital(currentAmbulance.assigned_hospital_id);
+                }, 100);
+
+            } else {
+                // Hide map for other states (or move it back to body if needed to preserve instance)
+                mapContainer.classList.add('hidden');
+            }
+        }
+
+        async function drawRouteToHospital(hospitalId) {
+            if (!hospitalId || !currentAmbulance.latitude || !currentAmbulance.longitude) return;
+
+            // Fetch hospital details
+            let endLat, endLng, hospName;
+            try {
+                const res = await fetch(`${API_BASE}/hospitals/${hospitalId}`);
+                const h = await res.json();
+                endLat = h.latitude;
+                endLng = h.longitude;
+                hospName = h.name;
+            } catch (e) { console.error(e); return; }
+
+            // Clear existing layers
+            if (routeLayer) map.removeLayer(routeLayer);
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+
+            const startLat = currentAmbulance.latitude;
+            const startLng = currentAmbulance.longitude;
+
+            // Markers
+            ambulanceMarker = L.marker([startLat, startLng], { icon: ambulanceIcon }).addTo(map).bindPopup("Ambulance");
+            const endMarker = L.marker([endLat, endLng]).addTo(map).bindPopup(hospName || "Destination");
+            markers.push(endMarker);
+
+            // OSRM Route
+            const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.routes && data.routes.length > 0) {
+                    const route = data.routes[0];
+
+                    // Initial Polyline
+                    // OSRM returns [lng, lat], Leaflet needs [lat, lng]
+                    const latLngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                    routeLayer = L.polyline(latLngs, { color: 'blue', weight: 5 }).addTo(map);
+                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+                    if (currentAmbulance.status === 'EN_ROUTE') {
+                        startAnimation(route.geometry);
+                    }
+                }
+            } catch (err) { console.error("Route fetch error", err); }
+        }
+
+        async function updateStatus(newStatus, extras = {}) {
+            if (!currentAmbulance) return;
+
+            try {
+                const payload = { new_status: newStatus, ...extras };
+                const res = await fetch(`${API_BASE}/ambulances/${currentAmbulance.ambulance_id}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    currentAmbulance.status = data.status;
+                    if (extras.assigned_hospital_id) currentAmbulance.assigned_hospital_id = extras.assigned_hospital_id;
+                    renderLifecycleUI();
+                } else {
+                    const err = await res.json();
+                    alert(`Status update failed: ${err.error}`);
+                }
+            } catch (e) {
+                console.error("Status Update Error", e);
+                alert("Network error updating status");
+            }
+        }
+
+        async function cancelCase() {
+            if (confirm("Are you sure you want to cancel the current case?")) {
+                await updateStatus('CANCELLED');
+            }
+        }
+
+        // --- DECISION ENGINE ---
 
         async function handleDecisionRequest(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
             const formEntries = Object.fromEntries(formData.entries());
 
-            // Construct hierarchical payload
+            // 1. Update State to CASE_CREATED first (Optional, but good for tracking)
+            // Actually, we can just fetch recommendations and if successful, transition state implicitly?
+            // STRICT MODE: We should ideally transition to CASE_CREATED on server.
+            // Let's do a quick local status update to show results, then actual transition happens on selection?
+            // OR: API call first.
+
+            await updateStatus('CASE_CREATED');
+
             const payload = {
                 request_id: crypto.randomUUID(),
                 ambulance: {
@@ -369,23 +626,17 @@
                     longitude: Number(formEntries.longitude)
                 },
                 patient: {
-                    patient_age: Number(formEntries.patient_age),
-                    patient_gender: formEntries.patient_gender,
+                    age: Number(formEntries.patient_age),
                     severity_level: Number(formEntries.severity_level),
-                    requires_icu: !!formEntries.requires_icu, // checkbox presence check
-                    requires_specialty: formEntries.requires_specialty || null
+                    requires_icu: !!formEntries.requires_icu
                 },
                 constraints: {
                     max_distance_km: Number(formEntries.max_distance_km),
-                    max_results: Number(formEntries.max_results)
+                    max_results: 5
                 }
             };
 
-            const msgDiv = document.getElementById('decisionMessage');
-            msgDiv.textContent = 'Finding hospitals...';
-            msgDiv.className = '';
-            resultsArea.classList.add('hidden');
-            resultsTableBody.innerHTML = '';
+            document.getElementById('decisionMessage').textContent = 'Analyzing...';
 
             try {
                 const res = await fetch(`${API_BASE}/agent/decide`, {
@@ -396,238 +647,47 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    msgDiv.textContent = `Found ${data.recommendations.length} hospitals. Best option: ${data.recommendations[0]?.name || 'None'}`;
-                    msgDiv.className = 'success';
+                    document.getElementById('decisionMessage').textContent = '';
                     renderResults(data.recommendations);
                 } else {
-                    const errFn = await res.json();
-                    msgDiv.textContent = 'Decision failed: ' + (errFn.error || 'Unknown error');
-                    msgDiv.className = 'error';
+                    document.getElementById('decisionMessage').textContent = 'Error fetching decisions';
+                    // Revert?
+                    await updateStatus('IDLE');
                 }
             } catch (err) {
                 console.error(err);
-                msgDiv.textContent = 'Error connecting to server.';
-                msgDiv.className = 'error';
-            }
-        }
-
-        // Map State
-        let map = null;
-        let routeLayer = null;
-        let markers = [];
-
-        // Animation State
-        let ambulanceMarker = null;
-        let animationId = null;
-        let pathCoordinates = [];
-        let currentStep = 0;
-        const ANIMATION_SPEED_MS = 100; // Time per step
-
-        // Custom Icons
-        const ambulanceIcon = L.icon({
-            iconUrl: 'https://cdn-icons-png.flaticon.com/512/263/263058.png', // Public ambulance icon
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
-            popupAnchor: [0, -16]
-        });
-
-        function initMap() {
-            if (map) return;
-            // Default to Hyderabad
-            map = L.map('map').setView([17.3850, 78.4867], 11);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-        }
-
-        function animateAmbulance() {
-            if (currentStep >= pathCoordinates.length) {
-                // Reached destination
-                cancelAnimationFrame(animationId);
-                return;
-            }
-
-            const [lat, lng] = pathCoordinates[currentStep];
-
-            // Move marker
-            if (ambulanceMarker) {
-                ambulanceMarker.setLatLng([lat, lng]);
-            }
-
-            currentStep++;
-
-            // Loop with delay
-            setTimeout(() => {
-                animationId = requestAnimationFrame(animateAmbulance);
-            }, ANIMATION_SPEED_MS);
-        }
-
-        function startAnimation(routeGeoJSON) {
-            // Stop existing animation
-            if (animationId) cancelAnimationFrame(animationId);
-
-            // Parse coordinates from OSRM GeoJSON (Format: [lon, lat])
-            // Leaflet needs [lat, lon]
-            if (routeGeoJSON.type === 'LineString') {
-                pathCoordinates = routeGeoJSON.coordinates.map(coord => [coord[1], coord[0]]);
-            } else {
-                console.error("Unsupported GeoJSON type for animation");
-                return;
-            }
-
-            currentStep = 0;
-            animateAmbulance();
-        }
-
-        async function selectHospital(hospital) {
-            if (!currentAmbulance || !currentAmbulance.latitude || !currentAmbulance.longitude) {
-                alert("Ambulance location unknown");
-                return;
-            }
-
-            // Ensure map is initialized
-            initMap();
-
-            // Clear previous route and markers
-            if (routeLayer) map.removeLayer(routeLayer);
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-
-            const startLat = currentAmbulance.latitude;
-            const startLng = currentAmbulance.longitude;
-
-            // Get hospital location (from hospital object or snapshot)
-            // The constraint says: "use hospital object lat/long"
-            // We need to ensure these are present. If not in root, check snapshot or mock it? 
-            // The prompt says: "hospital latitude & longitude should be taken from agent response if present otherwise add them as hidden fields"
-            // For now assuming they are on the hospital object as per standard structure.
-            let endLat = hospital.latitude;
-            let endLng = hospital.longitude;
-
-            // If coordinates are missing, fetch them
-            if (!endLat || !endLng) {
-                try {
-                    // console.log(`Fetching details for hospital ${hospital.hospital_id}...`);
-                    const res = await fetch(`${API_BASE}/hospitals/${hospital.hospital_id}`);
-                    if (res.ok) {
-                        const fullData = await res.json();
-                        endLat = fullData.latitude;
-                        endLng = fullData.longitude;
-                        // Update the hospital object for future clicks
-                        hospital.latitude = endLat;
-                        hospital.longitude = endLng;
-                    } else {
-                        console.error('Failed to fetch hospital details', await res.text());
-                    }
-                } catch (err) {
-                    console.error('Error fetching hospital details:', err);
-                }
-            }
-
-            if (!endLat || !endLng) {
-                alert("Selected hospital coordinates missing and could not be fetched.");
-                return;
-            }
-
-            // Markers
-            // Create Ambulance Marker with Custom Icon
-            ambulanceMarker = L.marker([startLat, startLng], { icon: ambulanceIcon }).addTo(map).bindPopup("Ambulance (Moving)");
-            const endMarker = L.marker([endLat, endLng]).addTo(map).bindPopup(hospital.name);
-            markers.push(endMarker); // Track endMarker to remove it later. ambulanceMarker tracked separately.
-
-            // Fetch Route from OSRM
-            const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
-
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-
-                if (data.routes && data.routes.length > 0) {
-                    const route = data.routes[0];
-                    const geojson = route.geometry;
-
-                    // Draw Polyline
-                    routeLayer = L.geoJSON(geojson, {
-                        style: { color: 'blue', weight: 5 }
-                    }).addTo(map);
-
-                    // Fit bounds
-                    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-
-                    // Start Animation
-                    startAnimation(geojson);
-
-                } else {
-                    alert("No route found.");
-                }
-            } catch (err) {
-                console.error("OSRM Error:", err);
-                alert("Failed to fetch route.");
+                await updateStatus('IDLE');
             }
         }
 
         function renderResults(hospitals) {
-            resultsArea.classList.remove('hidden');
+            const tbody = document.querySelector('#resultsTable tbody');
+            tbody.innerHTML = '';
 
-            if (!hospitals || hospitals.length === 0) {
-                resultsTableBody.innerHTML = '<tr><td colspan="7">No hospitals found matching constraints.</td></tr>';
+            if (!hospitals.length) {
+                tbody.innerHTML = '<tr><td colspan="7">No hospitals found. <button onclick="updateStatus(\'IDLE\')">Back</button></td></tr>';
                 return;
             }
 
-            // Initialize map if not already done, just to be ready (or wait for click)
-            // But better to init only when needed or after results are shown?
-            // User requirement: "Add a <div id='map'></div> below the results table" - done.
-            // Requirement 2: "Initialize Leaflet map using..."
-            // We can init it once results are shown or on first click. Let's do it on first click to save resources if not used, 
-            // OR simply call initMap() here if we want to show the start point immediately? 
-            // PROMPT: "Select one hospital... Visualize route".
-            // Let's lazy load on click to keep it clean, or init empty map. 
-            // Let's init empty map so user sees it exists.
-            setTimeout(initMap, 100);
-
             hospitals.forEach((h, index) => {
                 const tr = document.createElement('tr');
-                if (index === 0) tr.className = 'rank-1'; // Highlight best
-
-                // Reasoning bullets (Fix: 'reasoning' -> 'reasons')
-                const reasonsList = h.reasons ? h.reasons.map(r => `<li>${r}</li>`).join('') : '';
-
-                // Serialize hospital object for the button click
-                // We need to ensure we don't break HTML with quotes.
-                // A safer way is to store hospitals in a global array and reference by index.
-
-                const btnId = `route-btn-${index}`;
-
                 tr.innerHTML = `
-                    <td style="text-align:center; font-weight:bold;">#${index + 1}</td>
-                    <td>
-                        <strong>${h.name || 'Hospital ' + h.hospital_id.substring(0, 8)}</strong><br>
-                        <small>ID: ${h.hospital_id}</small>
-                    </td>
-                    <td>
-                        ${h.distance_km.toFixed(2)} km<br>
-                        ~${Math.round(h.eta_minutes)} mins
-                    </td>
-                    <td class="score">${h.score.toFixed(2)}</td>
-                    <td>
-                        <small>
-                            Beds: ${h.snapshot.available_beds}<br>
-                            ICU: ${h.snapshot.available_icu_beds}<br>
-                            Status: <b>${h.snapshot.status}</b>
-                        </small>
-                    </td>
-                    <td>
-                        <ul style="margin:0; padding-left:1.2rem;">${reasonsList}</ul>
-                    </td>
-                    <td>
-                        <button id="${btnId}" style="background-color: #007bff; padding: 0.5rem 1rem;">Select & Route</button>
-                    </td>
+                    <td>#${index + 1}</td>
+                    <td><b>${h.name || h.hospital_id}</b></td>
+                    <td>${h.distance_km.toFixed(2)} km / ${Math.round(h.eta_minutes)} min</td>
+                    <td>${h.score.toFixed(2)}</td>
+                    <td>${h.snapshot.status}</td>
+                    <td>${h.reasons ? h.reasons.join(', ') : ''}</td>
+                    <td><button onclick="confirmSelection('${h.hospital_id}', '${h.name}')" style="background-color: #007bff; padding: 5px;">Select</button></td>
                 `;
-                resultsTableBody.appendChild(tr);
-
-                // Add event listener safely
-                document.getElementById(btnId).addEventListener('click', () => selectHospital(h));
+                tbody.appendChild(tr);
             });
+        }
+
+        async function confirmSelection(hospitalId, hospitalName) {
+            if (confirm(`Confirm selection of ${hospitalName}?`)) {
+                await updateStatus('HOSPITAL_SELECTED', { assigned_hospital_id: hospitalId });
+            }
         }
     </script>
 </body>

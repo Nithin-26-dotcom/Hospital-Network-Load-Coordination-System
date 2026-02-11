@@ -28,12 +28,20 @@ CREATE TABLE IF NOT EXISTS ambulances (
   latitude DECIMAL(9,6),
   longitude DECIMAL(9,6),
   is_available BOOLEAN DEFAULT TRUE,
-  current_status VARCHAR(50),
+
+  status VARCHAR(50) DEFAULT 'IDLE',
+
+  assigned_hospital_id CHAR(36) NULL,
+  active_case_id CHAR(36) NULL,
+
   last_location_update TIMESTAMP NULL,
+
   username VARCHAR(100) UNIQUE,
   password VARCHAR(100),
+
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 CREATE TABLE IF NOT EXISTS emergency_cases (
   case_id CHAR(36) PRIMARY KEY,
