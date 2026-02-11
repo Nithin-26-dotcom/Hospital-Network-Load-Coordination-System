@@ -73,8 +73,10 @@
     <!-- Login Section -->
     <div id="loginSection" class="section">
         <h2>Login</h2>
-        <label for="loginId">Hospital ID</label>
-        <input type="text" id="loginId" placeholder="Enter Hospital ID">
+        <label for="loginUsername">Username</label>
+        <input type="text" id="loginUsername" placeholder="Enter Username">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter Password">
         <button onclick="handleLogin()">Login</button>
         <div id="loginMessage"></div>
         <div id="registerPrompt" class="hidden" style="margin-top: 1rem;">
@@ -87,6 +89,10 @@
     <div id="registerSection" class="section hidden">
         <h2>Register Hospital</h2>
         <form id="registerForm" onsubmit="handleRegister(event)">
+            <label>Username</label><input type="text" name="username" required>
+
+            <label>Password</label><input type="password" name="password" required>
+
             <label>Name</label><input type="text" name="name" required>
 
             <label>Type</label><input type="text" name="type" placeholder="e.g., General, Trauma" required>
@@ -174,23 +180,28 @@
         }
 
         async function handleLogin() {
-            const id = document.getElementById('loginId').value;
-            if (!id) return;
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
 
-            loginMessage.textContent = 'Verifying ID...';
+            if (!username || !password) return;
+
+            loginMessage.textContent = 'Verifying credentials...';
             loginMessage.className = '';
             registerPrompt.classList.add('hidden');
 
             try {
-                // Using existing backend route: GET /hospitals/:id
-                const res = await fetch(`${API_BASE}/hospitals/${id}`);
+                const res = await fetch(`${API_BASE}/hospitals/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
 
                 if (res.ok) {
                     const data = await res.json();
                     setLoggedIn(data);
                 } else {
-                    if (res.status === 404) {
-                        loginMessage.textContent = 'Hospital ID not registered.';
+                    if (res.status === 401) {
+                        loginMessage.textContent = 'Invalid username or password.';
                         loginMessage.className = 'error';
                         registerPrompt.classList.remove('hidden');
                     } else {
@@ -232,7 +243,6 @@
                 if (res.ok) {
                     const data = await res.json(); // { message, hospital_id }
                     // Auto-login logic
-                    // We construct the login object manually since register response is minimal
                     const loginData = {
                         ...payload,
                         hospital_id: data.hospital_id

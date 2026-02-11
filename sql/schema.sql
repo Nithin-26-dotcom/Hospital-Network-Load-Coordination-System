@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS hospitals (
   icu_beds INT DEFAULT 0,
   emergency_level_supported VARCHAR(100),
   contact_number VARCHAR(50),
+  username VARCHAR(100) UNIQUE,
+  password VARCHAR(100),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS ambulances (
   is_available BOOLEAN DEFAULT TRUE,
   current_status VARCHAR(50),
   last_location_update TIMESTAMP NULL,
+  username VARCHAR(100) UNIQUE,
+  password VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

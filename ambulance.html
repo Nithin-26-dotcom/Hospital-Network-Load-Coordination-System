@@ -119,8 +119,10 @@
     <!-- Login Section -->
     <div id="loginSection" class="section">
         <h2>Ambulance Login</h2>
-        <label for="loginRegNum">Registration Number</label>
-        <input type="text" id="loginRegNum" placeholder="e.g., TS-08-1234">
+        <label for="loginUsername">Username</label>
+        <input type="text" id="loginUsername" placeholder="Enter Username">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter Password">
         <button onclick="handleLogin()">Login</button>
         <div id="loginMessage"></div>
         <div id="registerPrompt" class="hidden" style="margin-top: 1rem;">
@@ -133,6 +135,12 @@
     <div id="registerSection" class="section hidden">
         <h2>Register Ambulance</h2>
         <form id="registerForm" onsubmit="handleRegister(event)">
+            <label>Username</label>
+            <input type="text" name="username" required>
+
+            <label>Password</label>
+            <input type="password" name="password" required>
+
             <label>Registration Number</label>
             <input type="text" name="registration_number" required>
 
@@ -242,8 +250,10 @@
         }
 
         async function handleLogin() {
-            const regNum = document.getElementById('loginRegNum').value;
-            if (!regNum) return;
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!username || !password) return;
 
             loginMessage.textContent = 'Logging in...';
             loginMessage.className = '';
@@ -253,7 +263,7 @@
                 const res = await fetch(`${API_BASE}/ambulances/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ registration_number: regNum })
+                    body: JSON.stringify({ username, password })
                 });
 
                 if (res.ok) {
@@ -261,7 +271,7 @@
                     setLoggedIn(data);
                 } else {
                     if (res.status === 401) {
-                        loginMessage.textContent = 'Ambulance not registered.';
+                        loginMessage.textContent = 'Invalid username or password.';
                         loginMessage.className = 'error';
                         registerPrompt.classList.remove('hidden');
                     } else {
@@ -277,9 +287,6 @@
 
         function showRegister() {
             showSection('registerSection');
-            // Pre-fill registration number if user typed it
-            document.querySelector('#registerForm [name="registration_number"]').value =
-                document.getElementById('loginRegNum').value;
         }
 
         async function handleRegister(e) {
@@ -409,6 +416,21 @@
         let routeLayer = null;
         let markers = [];
 
+        // Animation State
+        let ambulanceMarker = null;
+        let animationId = null;
+        let pathCoordinates = [];
+        let currentStep = 0;
+        const ANIMATION_SPEED_MS = 100; // Time per step
+
+        // Custom Icons
+        const ambulanceIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/263/263058.png', // Public ambulance icon
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
+        });
+
         function initMap() {
             if (map) return;
             // Default to Hyderabad
@@ -416,6 +438,45 @@
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
+        }
+
+        function animateAmbulance() {
+            if (currentStep >= pathCoordinates.length) {
+                // Reached destination
+                cancelAnimationFrame(animationId);
+                return;
+            }
+
+            const [lat, lng] = pathCoordinates[currentStep];
+
+            // Move marker
+            if (ambulanceMarker) {
+                ambulanceMarker.setLatLng([lat, lng]);
+            }
+
+            currentStep++;
+
+            // Loop with delay
+            setTimeout(() => {
+                animationId = requestAnimationFrame(animateAmbulance);
+            }, ANIMATION_SPEED_MS);
+        }
+
+        function startAnimation(routeGeoJSON) {
+            // Stop existing animation
+            if (animationId) cancelAnimationFrame(animationId);
+
+            // Parse coordinates from OSRM GeoJSON (Format: [lon, lat])
+            // Leaflet needs [lat, lon]
+            if (routeGeoJSON.type === 'LineString') {
+                pathCoordinates = routeGeoJSON.coordinates.map(coord => [coord[1], coord[0]]);
+            } else {
+                console.error("Unsupported GeoJSON type for animation");
+                return;
+            }
+
+            currentStep = 0;
+            animateAmbulance();
         }
 
         async function selectHospital(hospital) {
@@ -469,9 +530,10 @@
             }
 
             // Markers
-            const startMarker = L.marker([startLat, startLng]).addTo(map).bindPopup("Ambulance");
+            // Create Ambulance Marker with Custom Icon
+            ambulanceMarker = L.marker([startLat, startLng], { icon: ambulanceIcon }).addTo(map).bindPopup("Ambulance (Moving)");
             const endMarker = L.marker([endLat, endLng]).addTo(map).bindPopup(hospital.name);
-            markers.push(startMarker, endMarker);
+            markers.push(endMarker); // Track endMarker to remove it later. ambulanceMarker tracked separately.
 
             // Fetch Route from OSRM
             const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
@@ -491,6 +553,10 @@
 
                     // Fit bounds
                     map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+                    // Start Animation
+                    startAnimation(geojson);
+
                 } else {
                     alert("No route found.");
                 }

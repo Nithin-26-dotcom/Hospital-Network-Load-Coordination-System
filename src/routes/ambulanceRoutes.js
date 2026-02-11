@@ -6,19 +6,19 @@ const router = express.Router();
 
 // Register a new ambulance
 router.post('/register', async (req, res) => {
-  const { registration_number, organization, latitude, longitude } = req.body;
+  const { registration_number, organization, latitude, longitude, username, password } = req.body;
 
-  if (!registration_number) {
-    return res.status(400).json({ error: 'Registration number is required' });
+  if (!registration_number || !username || !password) {
+    return res.status(400).json({ error: 'Registration number, username, and password are required' });
   }
 
   const ambulanceId = randomUUID();
 
   try {
     const [result] = await db.execute(
-      `INSERT INTO ambulances (ambulance_id, registration_number, organization, latitude, longitude)
-       VALUES (?, ?, ?, ?, ?)`,
-      [ambulanceId, registration_number, organization, latitude, longitude]
+      `INSERT INTO ambulances (ambulance_id, registration_number, organization, latitude, longitude, username, password)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [ambulanceId, registration_number, organization, latitude, longitude, username, password]
     );
 
     res.status(201).json({
@@ -27,29 +27,33 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Error registering ambulance:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: 'Username already exists' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Login (Basic/Mock)
+// Login (Username/Password)
 router.post('/login', async (req, res) => {
-  const { registration_number } = req.body;
+  const { username, password } = req.body;
 
-  if (!registration_number) {
-    return res.status(400).json({ error: 'Registration number is required' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
 
   try {
-    const [rows] = await db.execute('SELECT ambulance_id, registration_number FROM ambulances WHERE registration_number = ?', [registration_number]);
+    const [rows] = await db.execute('SELECT ambulance_id, registration_number, username FROM ambulances WHERE username = ? AND password = ?', [username, password]);
 
     if (rows.length === 0) {
-      return res.status(401).json({ error: 'Ambulance not found' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     res.json({
       message: 'Login successful',
       ambulance_id: rows[0].ambulance_id,
-      registration_number: rows[0].registration_number
+      registration_number: rows[0].registration_number,
+      username: rows[0].username
     });
   } catch (error) {
     console.error('Error logging in:', error);

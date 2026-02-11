@@ -5,6 +5,7 @@ import hospitalRoutes from "./routes/hospitalRoutes.js";
 import ambulanceRoutes from "./routes/ambulanceRoutes.js";
 import stateRoutes from "./routes/stateRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
+import simulationRoutes from "./routes/simulationRoutes.js";
 import { startStateCache } from "./decision/stateCache.js";
 
 dotenv.config();
@@ -20,8 +21,9 @@ app.use(express.json());
 // Routes
 app.use("/hospitals", hospitalRoutes);
 app.use("/ambulances", ambulanceRoutes);
-app.use(agentRoutes); // Register agent routes globally or under /api?
+app.use(agentRoutes); 
 app.use(stateRoutes);
+app.use(simulationRoutes);
 
 app.get("/", (req, res) => {
   res.json({
