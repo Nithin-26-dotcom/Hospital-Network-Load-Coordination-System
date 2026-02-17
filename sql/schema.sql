@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS emergency_cases (
   FOREIGN KEY (ambulance_id) REFERENCES ambulances(ambulance_id)
 );
 
+
 CREATE TABLE IF NOT EXISTS decision_logs (
   decision_id CHAR(36) PRIMARY KEY,
   ambulance_id CHAR(36),
@@ -64,3 +65,20 @@ CREATE TABLE IF NOT EXISTS decision_logs (
   reason_summary TEXT,
   decision_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS hospital_reservations (
+  reservation_id CHAR(36) PRIMARY KEY,
+  hospital_id CHAR(36) NOT NULL,
+  ambulance_id CHAR(36) NOT NULL,
+  case_id CHAR(36) NULL,
+  bed_type VARCHAR(20) NOT NULL, -- 'NORMAL' or 'ICU'
+  reservation_status VARCHAR(30) NOT NULL, -- 'RESERVED', 'ARRIVED', 'CANCELLED', 'EXPIRED'
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP NULL,
+  FOREIGN KEY (hospital_id) REFERENCES hospitals(hospital_id),
+  FOREIGN KEY (ambulance_id) REFERENCES ambulances(ambulance_id)
+);
+
+-- ALTER TABLE commands in case table already exists (for reference):
+-- ALTER TABLE hospital_reservations ADD COLUMN IF NOT EXISTS case_id CHAR(36) NULL;
+-- ALTER TABLE hospital_reservations ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP NULL;

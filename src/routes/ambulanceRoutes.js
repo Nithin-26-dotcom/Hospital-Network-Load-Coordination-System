@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import db from '../db/dbClient.js';
+import { createReservation } from '../services/reservationService.js';
 
 const router = express.Router();
 
@@ -83,8 +84,8 @@ router.post('/:id/status', async (req, res) => {
     };
 
     try {
-        // 1. Get current status
-        const [rows] = await db.execute('SELECT status FROM ambulances WHERE ambulance_id = ?', [id]);
+        // 1. Get current status and active case
+        const [rows] = await db.execute('SELECT status, active_case_id FROM ambulances WHERE ambulance_id = ?', [id]);
         if (rows.length === 0) return res.status(404).json({ error: 'Ambulance not found' });
         
         let currentStatus = rows[0].status;
@@ -106,34 +107,127 @@ router.post('/:id/status', async (req, res) => {
         }
 
         // 3. Prepare Updates
-        let query = 'UPDATE ambulances SET status = ?';
-        const params = [new_status];
+        // Start a transaction for complex state changes
+        const connection = await db.getConnection();
+        await connection.beginTransaction();
 
-        // Specific Logic
-        if (new_status === 'HOSPITAL_SELECTED') {
-            if (!assigned_hospital_id) return res.status(400).json({ error: 'assigned_hospital_id required' });
-            query += ', assigned_hospital_id = ?';
-            params.push(assigned_hospital_id);
-        } else if (new_status === 'COMPLETED' || new_status === 'IDLE' || new_status === 'CANCELLED') {
-             // Reset state
-             query += ', assigned_hospital_id = NULL, active_case_id = NULL';
+        try {
+             let query = 'UPDATE ambulances SET status = ?';
+             const params = [new_status];
+
+             // Specific Logic
+             if (new_status === 'HOSPITAL_SELECTED') {
+                 if (!assigned_hospital_id) {
+                     await connection.rollback();
+                     return res.status(400).json({ error: 'assigned_hospital_id required' });
+                 }
+
+                 // Get active case to check if ICU is needed
+                 const currentActiveCaseId = rows[0].active_case_id;
+
+                 if (!currentActiveCaseId) {
+                      await connection.rollback();
+                      return res.status(400).json({ error: 'Cannot select hospital without an active case' });
+                 }
+
+                 const [caseRows] = await connection.execute(
+                     'SELECT requires_icu FROM emergency_cases WHERE case_id = ?',
+                     [currentActiveCaseId]
+                 );
+
+                 if (caseRows.length === 0) {
+                     await connection.rollback();
+                     return res.status(404).json({ error: 'Active case not found' });
+                 }
+
+                 const requires_icu = caseRows[0].requires_icu;
+
+                 // Create Reservation
+                 try {
+                     await createReservation(connection, {
+                         hospital_id: assigned_hospital_id,
+                         ambulance_id: id,
+                         requires_icu: requires_icu,
+                         case_id: currentActiveCaseId
+                     });
+
+                     // Update params for ambulance
+                     query += ', assigned_hospital_id = ?';
+                     params.push(assigned_hospital_id);
+
+                 } catch (resError) {
+                     await connection.rollback();
+                     console.error("Reservation failed:", resError);
+                     return res.status(500).json({ error: 'Failed to create hospital reservation: ' + resError.message });
+                 }
+
+             } else if (new_status === 'CASE_CREATED') {
+                 // Allow setting active_case_id if provided
+                 if (req.body.active_case_id) {
+                     query += ', active_case_id = ?';
+                     params.push(req.body.active_case_id);
+                 }
+             } else if (new_status === 'ARRIVED') {
+                 // Transition: EN_ROUTE -> ARRIVED
+                 // Update reservation to ARRIVED
+                 await connection.execute(
+                     `UPDATE hospital_reservations 
+                      SET reservation_status = 'ARRIVED' 
+                      WHERE ambulance_id = ? AND reservation_status = 'RESERVED'`,
+                     [id]
+                 );
+
+             } else if (new_status === 'CANCELLED') {
+                 // Cancel reservation if exists
+                 await connection.execute(
+                     `UPDATE hospital_reservations 
+                      SET reservation_status = 'CANCELLED' 
+                      WHERE ambulance_id = ? AND (reservation_status = 'RESERVED' OR reservation_status = 'ARRIVED')`,
+                     [id]
+                 );
+                 
+                 // Reset ambulance state
+                 query += ', assigned_hospital_id = NULL, active_case_id = NULL';
+
+             } else if (new_status === 'COMPLETED') { // PATIENT_ADMITTED -> COMPLETED
+                 // Complete reservation
+                 await connection.execute(
+                     `UPDATE hospital_reservations 
+                      SET reservation_status = 'COMPLETED' 
+                      WHERE ambulance_id = ? AND reservation_status = 'ARRIVED'`,
+                     [id]
+                 );
+
+                 // Reset ambulance state
+                 query += ', assigned_hospital_id = NULL, active_case_id = NULL';
+                 
+             } else if (new_status === 'IDLE') {
+                  // Fallback reset
+                  query += ', assigned_hospital_id = NULL, active_case_id = NULL';
+             }
+
+             // Add ID constraint
+             query += ' WHERE ambulance_id = ?';
+             params.push(id);
+
+             await connection.execute(query, params);
+             await connection.commit();
+
+             res.json({ 
+                 message: 'Status updated', 
+                 status: new_status,
+                 previous_status: currentStatus
+             });
+
+        } catch (err) {
+            await connection.rollback();
+            throw err;
+        } finally {
+            connection.release();
         }
-
-        // Add ID constraint
-        query += ' WHERE ambulance_id = ?';
-        params.push(id);
-
-        await db.execute(query, params);
-
-        res.json({ 
-            message: 'Status updated', 
-            status: new_status,
-            previous_status: currentStatus
-        });
-
-    } catch (error) {
-        console.error('Error updating status:', error);
-        res.status(500).json({ error: 'Internal server error' });
+      } catch (err) {
+        console.error("Error updating ambulance status:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 

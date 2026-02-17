@@ -96,4 +96,98 @@ router.get('/state/all', (req, res) => {
     res.json(getHospitalCache());
 });
 
+// Get hospital dashboard data
+router.get('/dashboard/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // 1. Get hospital details (capacity)
+        const [hospitalRows] = await db.execute(
+            'SELECT total_beds, icu_beds FROM hospitals WHERE hospital_id = ?',
+            [id]
+        );
+
+        if (hospitalRows.length === 0) {
+            return res.status(404).json({ error: 'Hospital not found' });
+        }
+
+        const hospital = hospitalRows[0];
+        const totalBeds = hospital.total_beds || 0;
+        const totalIcuBeds = hospital.icu_beds || 0;
+
+        // 2. Get active reservations
+        const [reservationRows] = await db.execute(
+            `SELECT
+                bed_type,
+                reservation_status,
+                COUNT(*) as count
+             FROM hospital_reservations
+             WHERE hospital_id = ?
+               AND reservation_status IN ('RESERVED', 'ARRIVED')
+             GROUP BY bed_type, reservation_status`,
+            [id]
+        );
+
+        // Process counts
+        let reservedNormal = 0;
+        let reservedIcu = 0;
+        let arrivedNormal = 0;
+        let arrivedIcu = 0;
+
+        reservationRows.forEach(row => {
+            if (row.bed_type === 'NORMAL') {
+                if (row.reservation_status === 'RESERVED') reservedNormal += row.count;
+                if (row.reservation_status === 'ARRIVED') arrivedNormal += row.count;
+            } else if (row.bed_type === 'ICU') {
+                if (row.reservation_status === 'RESERVED') reservedIcu += row.count;
+                if (row.reservation_status === 'ARRIVED') arrivedIcu += row.count;
+            }
+        });
+
+        const enRouteCount = reservedNormal + reservedIcu;
+        const arrivedCount = arrivedNormal + arrivedIcu;
+        const activeReservationsCount = enRouteCount + arrivedCount; // Total active (RESERVED + ARRIVED)
+
+        // Calculate effective availability
+        const effectiveAvailableBeds = Math.max(0, totalBeds - (reservedNormal + arrivedNormal));
+        const effectiveAvailableIcuBeds = Math.max(0, totalIcuBeds - (reservedIcu + arrivedIcu));
+
+         // 3. Get detailed reservation list
+        const [reservationList] = await db.execute(
+            `SELECT
+                r.ambulance_id,
+                r.case_id,
+                r.bed_type,
+                r.reservation_status,
+                r.created_at
+             FROM hospital_reservations r
+             WHERE r.hospital_id = ?
+               AND r.reservation_status IN ('RESERVED', 'ARRIVED')
+             ORDER BY r.created_at DESC`,
+            [id]
+        );
+
+        // 4. Calculate System Load
+        const systemLoad = totalBeds > 0 ? (activeReservationsCount / totalBeds) * 100 : 0;
+
+        res.json({
+            total_beds: totalBeds,
+            total_icu_beds: totalIcuBeds,
+            effective_available_beds: effectiveAvailableBeds,
+            effective_available_icu_beds: effectiveAvailableIcuBeds,
+            active_reservations_count: activeReservationsCount,
+            en_route_count: enRouteCount,
+            arrived_count: arrivedCount,
+            incoming_ambulances_count: activeReservationsCount,
+            reservation_list: reservationList,
+            last_updated_at: new Date().toISOString(),
+            system_calculated_load: parseFloat(systemLoad.toFixed(2))
+        });
+
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 export default router;

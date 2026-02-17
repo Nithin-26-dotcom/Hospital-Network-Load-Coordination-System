@@ -3,6 +3,8 @@ import express from "express";
 import cors from "cors";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import ambulanceRoutes from "./routes/ambulanceRoutes.js";
+import reservationRoutes from "./routes/reservationRoutes.js";
+import caseRoutes from "./routes/caseRoutes.js";
 import stateRoutes from "./routes/stateRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import simulationRoutes from "./routes/simulationRoutes.js";
@@ -21,6 +23,8 @@ app.use(express.json());
 // Routes
 app.use("/hospitals", hospitalRoutes);
 app.use("/ambulances", ambulanceRoutes);
+app.use("/reservations", reservationRoutes);
+app.use("/cases", caseRoutes);
 app.use(agentRoutes); 
 app.use(stateRoutes);
 app.use(simulationRoutes);

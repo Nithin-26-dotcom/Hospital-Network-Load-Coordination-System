@@ -23,15 +23,17 @@ router.post('/hospital/state/update', async (req, res) => {
     // 2. Prepare payload for Redis Stream
     const payload = {
       hospital_id,
-      available_beds: String(available_beds || 0),
-      available_icu_beds: String(available_icu_beds || 0),
-      current_load_score: String(current_load_score || 0),
-      staff_status: staff_status || 'adequate',
-      status: status || 'NORMAL',
-      latitude: String(latitude || 0),
-      longitude: String(longitude || 0),
       last_heartbeat_at: String(Date.now())
     };
+
+    // Optional fields - only include if provided
+    if (available_beds !== undefined) payload.available_beds = String(available_beds);
+    if (available_icu_beds !== undefined) payload.available_icu_beds = String(available_icu_beds);
+    if (current_load_score !== undefined) payload.current_load_score = String(current_load_score);
+    if (staff_status !== undefined) payload.staff_status = String(staff_status);
+    if (status !== undefined) payload.status = String(status);
+    if (latitude !== undefined) payload.latitude = String(latitude);
+    if (longitude !== undefined) payload.longitude = String(longitude);
 
     // Flatten object for XADD
     const flatArgs = [];

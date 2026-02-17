@@ -106,7 +106,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
             available_icu_beds: icu,
             status: state.status,
             current_load_score: load
-        }
+        },
+        name: state.name || ''
       });
     }
   
