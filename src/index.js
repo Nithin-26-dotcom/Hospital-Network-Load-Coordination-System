@@ -8,6 +8,7 @@ import caseRoutes from "./routes/caseRoutes.js";
 import stateRoutes from "./routes/stateRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import simulationRoutes from "./routes/simulationRoutes.js";
+import sosRoutes from "./routes/sosRoutes.js";
 import { startStateCache } from "./decision/stateCache.js";
 
 dotenv.config();
@@ -28,6 +29,7 @@ app.use("/cases", caseRoutes);
 app.use(agentRoutes); 
 app.use(stateRoutes);
 app.use(simulationRoutes);
+app.use("/sos", sosRoutes);
 
 app.get("/", (req, res) => {
   res.json({

@@ -6,19 +6,21 @@ const router = express.Router();
 
 // Register a new hospital
 router.post('/register', async (req, res) => {
-  const { name, type, latitude, longitude, address, city, total_beds, icu_beds, emergency_level_supported, contact_number, username, password } = req.body;
+  const { name, type, latitude, longitude, address, city, total_beds, icu_beds, emergency_level_supported, contact_number, username, password, specialties, doctors_available } = req.body;
 
   if (!username || !password || !name || !latitude || !longitude) {
     return res.status(400).json({ error: 'Username, password, name, latitude, and longitude are required' });
   }
 
   const hospitalId = randomUUID();
+  // Store specialties as JSON string
+  const specialtiesJson = Array.isArray(specialties) ? JSON.stringify(specialties) : (specialties || null);
 
   try {
     const [result] = await db.execute(
-      `INSERT INTO hospitals (hospital_id, name, type, latitude, longitude, address, city, total_beds, icu_beds, emergency_level_supported, contact_number, username, password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [hospitalId, name, type, latitude, longitude, address, city, total_beds || 0, icu_beds || 0, emergency_level_supported, contact_number, username, password]
+      `INSERT INTO hospitals (hospital_id, name, type, latitude, longitude, address, city, total_beds, icu_beds, emergency_level_supported, contact_number, specialties, doctors_available, username, password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [hospitalId, name, type, latitude, longitude, address, city, total_beds || 0, icu_beds || 0, emergency_level_supported, contact_number, specialtiesJson, doctors_available || 0, username, password]
     );
 
     res.status(201).json({
@@ -82,7 +84,7 @@ router.get('/:id', async (req, res) => {
 // Get all hospitals (Static Info)
 router.get('/', async (req, res) => {
     try {
-        const [rows] = await db.execute('SELECT hospital_id, name, latitude, longitude, type FROM hospitals');
+        const [rows] = await db.execute('SELECT hospital_id, name, latitude, longitude, type, total_beds, icu_beds FROM hospitals');
         res.json(rows);
     } catch (error) {
         console.error('Error fetching hospitals:', error);
@@ -96,14 +98,39 @@ router.get('/state/all', (req, res) => {
     res.json(getHospitalCache());
 });
 
+// Update hospital details (specialties, doctors, beds, contact)
+router.put('/:id/details', async (req, res) => {
+    const { id } = req.params;
+    const { specialties, doctors_available, total_beds, icu_beds, contact_number } = req.body;
+
+    // Store specialties as JSON string
+    const specialtiesJson = Array.isArray(specialties) ? JSON.stringify(specialties) : (specialties || null);
+
+    try {
+        const [result] = await db.execute(
+            `UPDATE hospitals SET specialties = ?, doctors_available = ?, total_beds = ?, icu_beds = ?, contact_number = ? WHERE hospital_id = ?`,
+            [specialtiesJson, doctors_available || 0, total_beds || 0, icu_beds || 0, contact_number || null, id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Hospital not found' });
+        }
+
+        res.json({ message: 'Hospital details updated successfully' });
+    } catch (error) {
+        console.error('Error updating hospital details:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Get hospital dashboard data
 router.get('/dashboard/:id', async (req, res) => {
     const { id } = req.params;
 
     try {
-        // 1. Get hospital details (capacity)
+        // 1. Get hospital details (capacity + specialties + doctors)
         const [hospitalRows] = await db.execute(
-            'SELECT total_beds, icu_beds FROM hospitals WHERE hospital_id = ?',
+            'SELECT total_beds, icu_beds, specialties, doctors_available, contact_number FROM hospitals WHERE hospital_id = ?',
             [id]
         );
 
@@ -170,6 +197,12 @@ router.get('/dashboard/:id', async (req, res) => {
         // 4. Calculate System Load
         const systemLoad = totalBeds > 0 ? (activeReservationsCount / totalBeds) * 100 : 0;
 
+        // Parse specialties from JSON string
+        let specialtiesList = [];
+        try {
+            if (hospital.specialties) specialtiesList = JSON.parse(hospital.specialties);
+        } catch(e) { /* ignore parse error */ }
+
         res.json({
             total_beds: totalBeds,
             total_icu_beds: totalIcuBeds,
@@ -180,6 +213,9 @@ router.get('/dashboard/:id', async (req, res) => {
             arrived_count: arrivedCount,
             incoming_ambulances_count: activeReservationsCount,
             reservation_list: reservationList,
+            specialties: specialtiesList,
+            doctors_available: hospital.doctors_available || 0,
+            contact_number: hospital.contact_number || '',
             last_updated_at: new Date().toISOString(),
             system_calculated_load: parseFloat(systemLoad.toFixed(2))
         });

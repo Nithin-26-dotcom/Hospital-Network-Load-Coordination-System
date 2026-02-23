@@ -72,7 +72,7 @@ router.post('/:id/status', async (req, res) => {
     
     // Allowed transitions map
     const allowedTransitions = {
-        'IDLE': ['CASE_CREATED', 'CANCELLED'],
+        'IDLE': ['CASE_CREATED', 'CANCELLED', 'EN_ROUTE_TO_PATIENT', 'BREAKDOWN'],
         'CASE_CREATED': ['HOSPITAL_SELECTED', 'IDLE', 'CANCELLED'],
         'HOSPITAL_SELECTED': ['EN_ROUTE', 'CANCELLED'],
         'EN_ROUTE': ['ARRIVED', 'CANCELLED'],
@@ -80,7 +80,12 @@ router.post('/:id/status', async (req, res) => {
         'PATIENT_ADMITTED': ['COMPLETED', 'CANCELLED'],
         'COMPLETED': ['IDLE'],
         'CANCELLED': ['IDLE'],
-        'ON_CALL': ['IDLE', 'CASE_CREATED', 'CANCELLED'] // Legacy support
+        'ON_CALL': ['IDLE', 'CASE_CREATED', 'CANCELLED'], // Legacy support
+        
+        // New SOS States
+        'EN_ROUTE_TO_PATIENT': ['AT_PATIENT', 'BREAKDOWN', 'IDLE'],  // IDLE = patient cancelled SOS
+        'AT_PATIENT': ['CASE_CREATED'],
+        'BREAKDOWN': ['IDLE'] // Assuming breakdown can be fixed and return to IDLE
     };
 
     try {
@@ -202,8 +207,8 @@ router.post('/:id/status', async (req, res) => {
                  query += ', assigned_hospital_id = NULL, active_case_id = NULL';
                  
              } else if (new_status === 'IDLE') {
-                  // Fallback reset
-                  query += ', assigned_hospital_id = NULL, active_case_id = NULL';
+                  // Fallback reset — also clear any active SOS request link
+                  query += ', assigned_hospital_id = NULL, active_case_id = NULL, current_request_id = NULL';
              }
 
              // Add ID constraint
@@ -231,11 +236,19 @@ router.post('/:id/status', async (req, res) => {
     }
 });
 
-// Get ambulance details
+// Get ambulance details (with Auto-Recovery)
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Check for auto-recovery first
+    await db.execute(
+        `UPDATE ambulances 
+         SET breakdown_status = FALSE, breakdown_until = NULL, status = 'IDLE' 
+         WHERE ambulance_id = ? AND breakdown_status = TRUE AND breakdown_until < NOW()`,
+        [id]
+    );
+
     const [rows] = await db.execute('SELECT * FROM ambulances WHERE ambulance_id = ?', [id]);
 
     if (rows.length === 0) {
@@ -247,6 +260,132 @@ router.get('/:id', async (req, res) => {
     console.error('Error fetching ambulance:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Breakdown Simulation (Failover)
+router.post('/:id/breakdown', async (req, res) => {
+    const { id } = req.params;
+    const { latitude, longitude } = req.body; // New: Accept current location
+
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // 1. Get current state
+        const [rows] = await connection.execute(
+            'SELECT status, current_request_id, active_case_id, assigned_hospital_id FROM ambulances WHERE ambulance_id = ? FOR UPDATE',
+            [id]
+        );
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'Ambulance not found' });
+        }
+
+        const amb = rows[0];
+        const breakdownDurationSeconds = 30; // Changed to 30 seconds
+        
+        // 2. Prepare Update Query
+        let updateQuery = `UPDATE ambulances 
+             SET breakdown_status = TRUE, 
+                 breakdown_until = DATE_ADD(NOW(), INTERVAL ? SECOND),
+                 status = 'BREAKDOWN',
+                 current_request_id = NULL,
+                 active_case_id = NULL,
+                 assigned_hospital_id = NULL`;
+        
+        const params = [breakdownDurationSeconds];
+
+        // If lat/lng provided (breakdown mid-route), update location
+        if (latitude && longitude) {
+            updateQuery += `, latitude = ?, longitude = ?`;
+            params.push(latitude, longitude);
+        }
+
+        updateQuery += ` WHERE ambulance_id = ?`;
+        params.push(id);
+
+        await connection.execute(updateQuery, params);
+
+        // 3. Handle Active SOS Request (Failover)
+        if (amb.current_request_id) {
+            // DETECT IF PATIENT IS ON BOARD (or active case in progress):
+            // We use active_case_id as the reliable indicator that a patient is involved.
+            // If we have an active case and valid location, we MUST update the request location
+            // so the rescue ambulance comes to the breakdown site, not the original pickup.
+            const hasActiveCase = !!amb.active_case_id; 
+            const hasLocation = latitude && longitude;
+
+            if (hasActiveCase && hasLocation) {
+                 console.log(`[Breakdown] Active Case ${amb.active_case_id} detected. Updating request ${amb.current_request_id} to breakdown location: ${latitude}, ${longitude}`);
+                 
+                 // Update location and re-open
+                 await connection.execute(
+                    `UPDATE emergency_requests 
+                     SET request_status = 'OPEN', assigned_ambulance_id = NULL,
+                         latitude = ?, longitude = ? 
+                     WHERE request_id = ?`,
+                    [latitude, longitude, amb.current_request_id]
+                );
+            } else {
+                // No active case (en route to pickup) OR missing location data
+                console.log(`[Breakdown] No active case or missing location. Retaining original pickup location for request ${amb.current_request_id}`);
+                
+                await connection.execute(
+                    `UPDATE emergency_requests 
+                     SET request_status = 'OPEN', assigned_ambulance_id = NULL 
+                     WHERE request_id = ?`,
+                    [amb.current_request_id]
+                );
+            }
+        }
+
+        // 4. Handle Active Hospital Reservation (Cancellation)
+        if (amb.assigned_hospital_id) {
+            // Cancel reservation
+            await connection.execute(
+                `UPDATE hospital_reservations 
+                 SET reservation_status = 'CANCELLED' 
+                 WHERE ambulance_id = ? AND (reservation_status = 'RESERVED' OR reservation_status = 'ARRIVED')`,
+                [id]
+            );
+        }
+
+        await connection.commit();
+        res.json({ 
+            message: 'Ambulance breakdown simulated', 
+            breakdown_until: new Date(Date.now() + breakdownDurationSeconds * 1000),
+            updated_location: (latitude && longitude) ? { lat: latitude, lng: longitude } : 'unchanged'
+        });
+
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error simulating breakdown:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        connection.release();
+    }
+});
+
+// Real-time Location Update (Lightweight)
+router.put('/:id/location', async (req, res) => {
+    const { id } = req.params;
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+        return res.status(400).json({ error: 'lat/lng required' });
+    }
+
+    try {
+        await db.execute(
+            'UPDATE ambulances SET latitude = ?, longitude = ?, last_location_update = NOW() WHERE ambulance_id = ?',
+            [latitude, longitude, id]
+        );
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('Error updating location:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 export default router;

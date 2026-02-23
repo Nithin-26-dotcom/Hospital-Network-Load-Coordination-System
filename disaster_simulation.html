@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DisasterOS — Emergency Response Simulation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080d1a;
+      --surface: #0d1425;
+      --surface2: #111c35;
+      --surface3: #16243f;
+      --border: rgba(255, 255, 255, 0.07);
+      --border2: rgba(255, 255, 255, 0.12);
+      --accent: #00e5ff;
+      --accent2: #7c4dff;
+      --ok: #00e676;
+      --warn: #ffa726;
+      --danger: #ff3d57;
+      --text: #e8eeff;
+      --muted: #4a5980;
+      --sidebar-w: 320px;
+      --topbar-h: 52px;
+      --font-ui: 'DM Sans', sans-serif;
+      --font-mono: 'Space Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: var(--font-ui); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+
+    /* TOPBAR */
+    .topbar { height: var(--topbar-h); min-height: var(--topbar-h); background: var(--surface); border-bottom: 1px solid var(--border2); display: flex; align-items: center; padding: 0 16px; gap: 0; z-index: 300; position: relative; }
+    .topbar::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--accent) 30%, var(--accent2) 70%, transparent); opacity: 0.4; }
+    .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-right: 20px; }
+    .brand-logo { width: 32px; height: 32px; background: linear-gradient(135deg, var(--danger), #ff6b00); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 0 16px rgba(255, 61, 87, 0.4); }
+    .brand-name { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
+    .brand-name span { color: var(--accent); }
+    .topbar-sep { width: 1px; height: 28px; background: var(--border2); margin: 0 16px; flex-shrink: 0; }
+    .kpi-strip { display: flex; gap: 4px; flex: 1; overflow: hidden; }
+    .kpi { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); white-space: nowrap; transition: border-color 0.3s; }
+    .kpi:hover { border-color: var(--border2); }
+    .kpi-label { font-size: 0.68rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+    .kpi-val { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; color: var(--accent); min-width: 24px; text-align: right; transition: color 0.3s; }
+    .kpi-val.warn { color: var(--warn); }
+    .kpi-val.danger { color: var(--danger); }
+    .kpi-val.ok { color: var(--ok); }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); animation: dotPulse 2s ease-in-out infinite; flex-shrink: 0; }
+    @keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .topbar-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
+    .btn-pill { padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border2); background: rgba(255,255,255,0.06); color: var(--text); font-family: var(--font-ui); font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em; }
+    .btn-pill:hover { background: rgba(255,255,255,0.12); border-color: var(--accent); color: var(--accent); }
+
+    /* LAYOUT */
+    .layout { flex: 1; display: flex; overflow: hidden; position: relative; }
+    #map { flex: 1; position: relative; z-index: 1; }
+
+    /* PANDEMIC VIGNETTE */
+    .pandemic-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 25%, rgba(255, 61, 87, 0.22) 100%); pointer-events: none; opacity: 0; z-index: 400; transition: opacity 0.8s ease; }
+    .pandemic-active .pandemic-vignette { opacity: 1; animation: vigPulse 3s ease-in-out infinite; }
+    @keyframes vigPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+    /* SCENARIO BADGE */
+    #scenario-badge { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: none; }
+    .scenario-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 20px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; backdrop-filter: blur(12px); animation: scenIn 0.3s ease-out; }
+    @keyframes scenIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    .scenario-pill.pandemic { background: rgba(255, 61, 87, 0.18); border: 1px solid rgba(255, 61, 87, 0.5); color: #ff8080; box-shadow: 0 0 20px rgba(255, 61, 87, 0.2); }
+    .scenario-pill.traffic { background: rgba(255, 167, 38, 0.15); border: 1px solid rgba(255, 167, 38, 0.4); color: var(--warn); }
+    .scenario-pill.incident { background: rgba(255, 30, 0, 0.22); border: 1px solid rgba(255, 60, 20, 0.65); color: #ff6040; box-shadow: 0 0 28px rgba(255, 30, 0, 0.35); animation: scenIn 0.3s ease-out, incidentPulse 1.2s ease-in-out infinite; }
+    @keyframes incidentPulse { 0%, 100% { box-shadow: 0 0 28px rgba(255,30,0,0.35); } 50% { box-shadow: 0 0 48px rgba(255,30,0,0.6); } }
+    .scenario-pill .pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: dotPulse 1s ease-in-out infinite; }
+
+    /* SCREEN SHAKE */
+    @keyframes screenShake { 0%, 100% { transform: translate(0); } 10% { transform: translate(-3px, 2px); } 20% { transform: translate(4px, -1px); } 30% { transform: translate(-2px, 3px); } 40% { transform: translate(3px, -3px); } 50% { transform: translate(-4px, 1px); } 60% { transform: translate(2px, 2px); } 70% { transform: translate(-1px, -2px); } 80% { transform: translate(3px, 1px); } 90% { transform: translate(-2px, -1px); } }
+    .screen-shake { animation: screenShake 0.5s ease-in-out; }
+
+    /* RED FLASH */
+    .incident-flash { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 20%, rgba(255,0,0,0.25) 100%); pointer-events: none; z-index: 9000; animation: flashIn 0.8s ease-out forwards; }
+    @keyframes flashIn { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    /* EPICENTER MARKER */
+    .epicenter-marker { width: 60px; height: 60px; position: relative; }
+    .epicenter-core { position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; transform: translate(-50%,-50%); background: radial-gradient(circle, #ff4020 30%, #ff6000 100%); border-radius: 50%; box-shadow: 0 0 20px rgba(255,64,32,0.8); z-index: 3; }
+    .epicenter-ring { position: absolute; top: 50%; left: 50%; border: 2px solid rgba(255,64,32,0.6); border-radius: 50%; animation: epicRing 2s ease-out infinite; }
+    .epicenter-ring:nth-child(2) { animation-delay: 0.5s; }
+    .epicenter-ring:nth-child(3) { animation-delay: 1s; }
+    @keyframes epicRing { 0% { width: 16px; height: 16px; transform: translate(-50%,-50%); opacity: 1; } 100% { width: 80px; height: 80px; transform: translate(-50%,-50%); opacity: 0; } }
+
+    /* TRIGGER BUTTON */
+    .btn-incident { position: relative; width: 100%; padding: 14px 20px; border: 2px solid rgba(255,50,20,0.5); border-radius: 10px; background: linear-gradient(135deg, rgba(200,20,0,0.15) 0%, rgba(255,80,0,0.08) 100%); color: #ff6040; font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.3s; overflow: hidden; }
+    .btn-incident::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,50,20,0.3) 0%, transparent 50%); opacity: 0; transition: opacity 0.3s; }
+    .btn-incident:hover { border-color: rgba(255,50,20,0.9); box-shadow: 0 0 30px rgba(255,50,20,0.3), inset 0 0 20px rgba(255,50,20,0.05); color: #ff4020; transform: scale(1.02); }
+    .btn-incident:hover::before { opacity: 1; }
+    .btn-incident:active { transform: scale(0.98); }
+    .btn-incident:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-incident .btn-incident-icon { font-size: 1.1rem; margin-right: 6px; }
+
+    /* ICC OVERLAY */
+    #icc-overlay { position: fixed; inset: 0; z-index: 5000; display: none; background: rgba(4,6,14,0.88); backdrop-filter: blur(20px); animation: iccFadeIn 0.4s ease-out; }
+    #icc-overlay.open { display: flex; flex-direction: column; }
+    @keyframes iccFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .icc-header { padding: 16px 28px 14px; border-bottom: 1px solid rgba(255,50,20,0.25); display: flex; align-items: center; gap: 14px; background: rgba(255,30,0,0.04); flex-shrink: 0; }
+    .icc-header-icon { width: 42px; height: 42px; background: linear-gradient(135deg, #ff2000, #ff6800); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 0 24px rgba(255,30,0,0.5); animation: headerPulse 2s ease-in-out infinite; }
+    @keyframes headerPulse { 0%, 100% { box-shadow: 0 0 24px rgba(255,30,0,0.5); } 50% { box-shadow: 0 0 40px rgba(255,30,0,0.8); } }
+    .icc-title { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #ff6040; letter-spacing: 0.04em; flex: 1; }
+    .icc-title span { display: block; font-size: 0.68rem; color: var(--muted); font-family: var(--font-ui); font-weight: 400; margin-top: 2px; }
+    .icc-elapsed { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; color: var(--danger); text-align: right; }
+    .icc-elapsed small { display: block; font-size: 0.58rem; color: var(--muted); text-transform: uppercase; font-weight: 500; }
+    .icc-close { background: none; border: 1px solid rgba(255,255,255,0.1); color: var(--muted); cursor: pointer; font-size: 1rem; padding: 6px 12px; border-radius: 6px; transition: all 0.15s; margin-left: 8px; }
+    .icc-close:hover { color: var(--text); border-color: var(--danger); }
+    .icc-body { flex: 1; overflow-y: auto; padding: 20px 28px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-content: start; }
+    .icc-body::-webkit-scrollbar { width: 3px; }
+    .icc-body::-webkit-scrollbar-thumb { background: var(--border2); }
+    .icc-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px; transition: border-color 0.2s; }
+    .icc-card:hover { border-color: rgba(255,255,255,0.14); }
+    .icc-card.full { grid-column: 1 / -1; }
+    .icc-card.span2 { grid-column: span 2; }
+    .icc-card-title { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .icc-card-title::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
+    .icc-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .icc-kpi { text-align: center; padding: 12px 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; }
+    .icc-kpi-val { font-family: var(--font-mono); font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; transition: color 0.3s; }
+    .icc-kpi-lbl { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .icc-sev-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .icc-sev-lbl { width: 70px; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; }
+    .icc-sev-track { flex: 1; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+    .icc-sev-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .icc-sev-count { width: 30px; font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; text-align: right; }
+    .icc-hosp-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 6px 8px; background: rgba(255,255,255,0.02); border-radius: 6px; }
+    .icc-hosp-name { width: 140px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .icc-hosp-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+    .icc-hosp-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .icc-hosp-count { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; min-width: 40px; text-align: right; }
+    .icc-timeline { max-height: 280px; overflow-y: auto; }
+    .icc-timeline::-webkit-scrollbar { width: 2px; }
+    .icc-timeline::-webkit-scrollbar-thumb { background: var(--border2); }
+    .icc-tl-item { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); animation: iccTlIn 0.3s ease-out; }
+    @keyframes iccTlIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+    .icc-tl-time { font-family: var(--font-mono); font-size: 0.62rem; color: var(--muted); min-width: 45px; flex-shrink: 0; }
+    .icc-tl-text { font-size: 0.72rem; color: var(--text); flex: 1; }
+    .icc-tl-text.critical { color: var(--danger); }
+    .icc-tl-text.dispatch { color: var(--accent); }
+    .icc-tl-text.arrival { color: var(--ok); }
+    .icc-footer { padding: 12px 28px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 16px; flex-shrink: 0; background: rgba(0,0,0,0.3); }
+    .icc-progress-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+    .icc-progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--danger), var(--warn), var(--ok)); transition: width 0.5s ease; }
+    .icc-progress-text { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text); font-weight: 700; min-width: 80px; }
+
+    /* ZOOM OVERLAY */
+    #zoom-overlay { display: none; position: absolute; top: 12px; left: 12px; background: rgba(8,13,26,0.92); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 14px; font-size: 0.72rem; color: var(--accent); z-index: 500; pointer-events: none; font-family: var(--font-mono); backdrop-filter: blur(8px); }
+
+    /* QUEUE PANEL */
+    #queue-panel { position: absolute; bottom: 16px; left: 12px; width: 228px; max-height: 300px; background: rgba(8,13,26,0.93); border: 1px solid rgba(124,77,255,0.3); border-radius: 12px; z-index: 600; pointer-events: none; backdrop-filter: blur(12px); overflow: hidden; transition: opacity 0.3s, transform 0.3s; }
+    #queue-panel.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+    .qp-head { padding: 9px 12px 8px; border-bottom: 1px solid rgba(124,77,255,0.15); display: flex; align-items: center; gap: 7px; }
+    .qp-title { font-size: 0.66rem; font-weight: 700; color: #a080ff; text-transform: uppercase; letter-spacing: 0.06em; flex: 1; }
+    .qp-count { font-size: 0.64rem; color: var(--muted); font-family: var(--font-mono); }
+    .qp-body { padding: 6px 7px; overflow-y: auto; max-height: 240px; }
+    .qp-body::-webkit-scrollbar { width: 2px; }
+    .qp-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .qp-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 6px; margin-bottom: 3px; border-left: 2px solid; background: rgba(255,255,255,0.02); animation: qIn 0.2s ease-out; }
+    @keyframes qIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+    .qp-icon { font-size: 12px; flex-shrink: 0; }
+    .qp-info { flex: 1; min-width: 0; }
+    .qp-amb { font-size: 0.62rem; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
+    .qp-type { font-size: 0.59rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qp-sev { font-size: 0.56rem; font-weight: 800; text-transform: uppercase; padding: 1px 5px; border-radius: 6px; flex-shrink: 0; }
+    .sev-critical { border-color: var(--danger); }
+    .sev-critical .qp-sev { background: rgba(255,61,87,0.15); color: var(--danger); }
+    .sev-high { border-color: #ff7040; }
+    .sev-high .qp-sev { background: rgba(255,112,64,0.15); color: #ff8060; }
+    .sev-medium { border-color: var(--warn); }
+    .sev-medium .qp-sev { background: rgba(255,167,38,0.15); color: var(--warn); }
+    .sev-low { border-color: var(--ok); }
+    .sev-low .qp-sev { background: rgba(0,230,118,0.12); color: var(--ok); }
+    .qp-item.phase-pickup { border-left: 2px solid #00c8ff; }
+
+    /* SIDEBAR */
+    .sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-left: 1px solid var(--border2); display: flex; flex-direction: column; z-index: 10; position: relative; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border2); flex-shrink: 0; background: var(--bg); }
+    .tab { flex: 1; padding: 10px 6px; font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; background: none; border: none; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; font-family: var(--font-ui); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: rgba(0,229,255,0.05); }
+    .tab:hover:not(.active) { color: var(--text); }
+    .panel { display: none; flex: 1; overflow-y: auto; padding: 12px; flex-direction: column; gap: 10px; }
+    .panel.active { display: flex; }
+    .panel::-webkit-scrollbar { width: 3px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    .sec-hdr { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .sec-hdr::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .sec-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px; transition: border-color 0.2s; }
+    .card:hover { border-color: var(--border2); }
+
+    /* BUTTONS */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 13px; border: none; border-radius: 7px; font-size: 0.77rem; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: var(--font-ui); white-space: nowrap; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-full { width: 100%; }
+    .btn-primary { background: linear-gradient(135deg, #0095cc, var(--accent2)); color: #fff; box-shadow: 0 2px 12px rgba(0,149,204,0.25); }
+    .btn-primary:hover:not(:disabled) { box-shadow: 0 2px 20px rgba(0,229,255,0.3); filter: brightness(1.1); }
+    .btn-danger { background: var(--danger); color: #fff; box-shadow: 0 2px 12px rgba(255,61,87,0.3); }
+    .btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-success { background: #00b854; color: #fff; }
+    .btn-success:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-warn { background: #e08800; color: #000; font-weight: 700; }
+    .btn-warn:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; border: 1px solid var(--border2); color: var(--muted); }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-info { background: linear-gradient(135deg, #006090, #0040a0); color: #fff; }
+    .btn-info:hover:not(:disabled) { filter: brightness(1.12); }
+    .btn-xs { padding: 3px 8px; font-size: 0.68rem; border-radius: 5px; }
+    .btn-sm { padding: 6px 11px; font-size: 0.74rem; }
+
+    /* PLACEMENT BUTTON */
+    .btn-place { display: flex; align-items: center; gap: 5px; padding: 7px 12px; background: linear-gradient(135deg, rgba(255,160,0,0.2), rgba(255,100,0,0.15)); border: 1px solid rgba(255,140,0,0.5); color: #ffb040; font-size: 0.7rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px; }
+    .btn-place:hover { background: linear-gradient(135deg, rgba(255,160,0,0.35), rgba(255,100,0,0.25)); box-shadow: 0 0 14px rgba(255,140,0,0.3); }
+    .btn-place.active { background: linear-gradient(135deg, rgba(255,60,0,0.3), rgba(255,20,0,0.2)); border-color: rgba(255,60,0,0.7); color: #ff6030; animation: placePulse 1.2s ease-in-out infinite; }
+    @keyframes placePulse { 0%, 100% { box-shadow: 0 0 8px rgba(255,60,0,0.2); } 50% { box-shadow: 0 0 20px rgba(255,60,0,0.5); } }
+    .placement-active #map { cursor: crosshair !important; }
+
+    /* LOCATION BADGE */
+    .location-badge { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: rgba(0,200,100,0.1); border: 1px solid rgba(0,200,100,0.3); border-radius: 5px; font-size: 0.62rem; color: #60dd90; font-family: var(--font-mono); }
+    .location-badge .loc-clear { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 0.7rem; transition: color 0.15s; }
+    .location-badge .loc-clear:hover { color: var(--danger); }
+
+    /* INCIDENT PIN */
+    .incident-pin { position: relative; width: 32px; height: 32px; }
+    .incident-pin-core { width: 28px; height: 28px; background: radial-gradient(circle, #ff4020, #cc1000); border: 2.5px solid #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 3px 15px rgba(255,30,0,0.6), 0 0 25px rgba(255,30,0,0.3); position: relative; z-index: 2; }
+    .incident-pin-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 48px; height: 48px; border: 2px solid rgba(255,60,20,0.5); border-radius: 50%; animation: incPinRing 2s ease-out infinite; }
+    .incident-pin-ring:nth-child(2) { animation-delay: 0.7s; }
+    @keyframes incPinRing { 0% { transform: translate(-50%,-50%) scale(0.7); opacity: 0.9; } 100% { transform: translate(-50%,-50%) scale(1.8); opacity: 0; } }
+
+    /* SPAWN ROW */
+    .spawn-row { display: flex; gap: 7px; align-items: center; margin-bottom: 10px; }
+    input[type=number] { background: var(--surface3); border: 1px solid var(--border2); color: var(--text); padding: 6px 10px; border-radius: 7px; font-size: 0.82rem; width: 60px; font-family: var(--font-mono); outline: none; transition: border-color 0.2s; }
+    input[type=number]:focus { border-color: var(--accent); }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-box { background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; text-align: center; }
+    .stat-val { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 3px; transition: color 0.3s; }
+    .stat-label { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .slider-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .slider-row label { font-size: 0.74rem; color: var(--muted); }
+    .slider-val { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700; color: var(--accent); }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--surface3); border-radius: 2px; outline: none; cursor: pointer; margin-bottom: 10px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px rgba(0,229,255,0.5); }
+    .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 8px; font-size: 0.63rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+    .b-ok { background: rgba(0,230,118,.12); color: var(--ok); }
+    .b-warn { background: rgba(255,167,38,.14); color: var(--warn); }
+    .b-err { background: rgba(255,61,87,.14); color: var(--danger); }
+    .b-info { background: rgba(0,229,255,.12); color: var(--accent); }
+    .b-off { background: rgba(255,255,255,.06); color: var(--muted); }
+
+    /* HOSPITAL ITEMS */
+    .h-item { background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 11px; margin-bottom: 6px; transition: border-color 0.2s; }
+    .h-item:hover { border-color: var(--border2); }
+    .h-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .h-name { font-size: 0.78rem; font-weight: 600; flex: 1; margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .h-bar-wrap { margin-bottom: 5px; }
+    .h-bar-label { display: flex; justify-content: space-between; font-size: 0.67rem; color: var(--muted); margin-bottom: 4px; }
+    .h-bar-bg { height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden; }
+    .h-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+    .h-stats { display: flex; gap: 10px; font-size: 0.67rem; color: var(--muted); margin-bottom: 6px; }
+    .h-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    /* LOG */
+    .log-wrap { flex: 1; background: #030710; border: 1px solid var(--border); border-radius: 8px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.68rem; padding: 7px 5px; min-height: 0; }
+    .log-wrap::-webkit-scrollbar { width: 2px; }
+    .log-wrap::-webkit-scrollbar-thumb { background: var(--border2); }
+    .le { padding: 2px 8px; border-left: 2px solid; margin-bottom: 2px; line-height: 1.6; animation: leIn 0.15s ease-out; border-radius: 0 3px 3px 0; }
+    @keyframes leIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+    .le-info { border-color: #1e3c6a; color: #4a6a9a; }
+    .le-success { border-color: var(--ok); color: #00a855; }
+    .le-warning { border-color: var(--warn); color: #c08000; }
+    .le-danger { border-color: var(--danger); color: #cc2040; }
+
+    /* SELECT */
+    select { background: var(--surface3); border: 1px solid var(--border2); color: var(--text); padding: 6px 10px; border-radius: 7px; font-size: 0.78rem; width: 100%; outline: none; cursor: pointer; font-family: var(--font-ui); margin-bottom: 8px; transition: border-color 0.2s; }
+    select:focus { border-color: var(--accent); }
+    .sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* DETAIL PANEL */
+    #detail-panel { position: absolute; top: 0; bottom: 0; right: var(--sidebar-w); width: 300px; background: rgba(8,13,26,0.97); border-left: 1px solid var(--border2); border-right: 1px solid var(--border2); z-index: 800; transform: translateX(calc(100% + var(--sidebar-w))); transition: transform 0.32s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease; opacity: 0; display: flex; flex-direction: column; backdrop-filter: blur(16px); pointer-events: none; }
+    #detail-panel.open { transform: translateX(0); opacity: 1; pointer-events: all; }
+    .dp-topbar { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .dp-icon { font-size: 26px; flex-shrink: 0; }
+    .dp-title-col { flex: 1; min-width: 0; }
+    .dp-id { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); display: block; }
+    .dp-type { font-size: 0.74rem; font-weight: 600; display: block; margin-top: 1px; }
+    .dp-sev { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 3px; }
+    .dp-eta-col { text-align: center; flex-shrink: 0; }
+    .dp-eta-num { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700; line-height: 1; display: block; }
+    .dp-eta-lbl { font-size: 0.56rem; color: var(--muted); text-transform: uppercase; display: block; }
+    .dp-close { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); cursor: pointer; font-size: 1rem; padding: 5px 8px; border-radius: 6px; transition: all 0.15s; flex-shrink: 0; line-height: 1; }
+    .dp-close:hover { color: var(--danger); background: rgba(255,61,87,0.12); border-color: rgba(255,61,87,0.3); }
+    .dp-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+    .dp-body::-webkit-scrollbar { width: 3px; }
+    .dp-body::-webkit-scrollbar-thumb { background: var(--border2); }
+    .dp-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+    .dp-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 6px; font-size: 0.63rem; color: var(--muted); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); }
+    .dp-chip b { color: var(--text); font-weight: 600; }
+    .dp-sec { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); display: flex; align-items: center; gap: 5px; margin: 12px 0 8px; }
+    .dp-sec::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
+    .dp-factor { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .dp-f-lbl { width: 60px; font-size: 0.62rem; color: var(--muted); flex-shrink: 0; }
+    .dp-f-track { flex: 1; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+    .dp-f-bar { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+    .dp-f-val { width: 64px; font-size: 0.6rem; font-weight: 700; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dp-cands { display: flex; flex-direction: column; gap: 5px; }
+    .dp-cand { border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 10px; background: rgba(255,255,255,0.02); position: relative; overflow: hidden; transition: border-color 0.2s; }
+    .dp-cand:hover { border-color: rgba(255,255,255,0.1); }
+    .dp-cand.winner { border-color: rgba(0,230,118,0.35); background: rgba(0,230,118,0.04); }
+    .dp-cand-tag { position: absolute; top: 5px; right: 9px; font-size: 0.56rem; font-weight: 800; color: var(--muted); }
+    .dp-cand.winner .dp-cand-tag { color: var(--ok); }
+    .dp-cand-name { font-weight: 700; font-size: 0.71rem; color: var(--text); padding-right: 50px; margin-bottom: 4px; }
+    .dp-cand-bar-track { height: 3px; background: rgba(255,255,255,0.04); border-radius: 2px; margin-bottom: 5px; overflow: hidden; }
+    .dp-cand-bar-fill { height: 100%; border-radius: 2px; }
+    .dp-cand-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.59rem; color: var(--muted); }
+    .dp-cand-meta b { color: var(--text); }
+    .dp-cand-score { position: absolute; bottom: 6px; right: 9px; font-family: var(--font-mono); font-size: 0.96rem; font-weight: 700; color: var(--accent); }
+    .dp-cand.winner .dp-cand-score { color: var(--ok); }
+    .dp-formula { margin-top: 12px; padding: 7px 10px; border-radius: 6px; background: rgba(0,229,255,0.04); border: 1px solid rgba(0,229,255,0.1); font-family: var(--font-mono); font-size: 0.57rem; color: rgba(0,229,255,0.5); text-align: center; line-height: 1.5; }
+
+    /* EVENT FEED */
+    #event-feed { position: absolute; bottom: 16px; right: 16px; width: 240px; z-index: 600; pointer-events: none; display: flex; flex-direction: column; gap: 5px; }
+    .ef-item { background: rgba(8,13,26,0.93); border-left: 3px solid var(--accent); border-radius: 0 7px 7px 0; padding: 7px 11px; font-size: 0.71rem; backdrop-filter: blur(8px); animation: efIn 0.25s ease-out; transition: opacity 0.3s, transform 0.3s; line-height: 1.4; }
+    @keyframes efIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+    .ef-item.danger { border-left-color: var(--danger); }
+    .ef-item.warn { border-left-color: var(--warn); }
+    .ef-item.ok { border-left-color: var(--ok); }
+
+    /* LEAFLET OVERRIDES */
+    .leaflet-routing-container { display: none !important; }
+    .leaflet-popup-content-wrapper { background: rgba(8,13,26,0.97) !important; color: var(--text) !important; border: 1px solid rgba(0,229,255,0.2) !important; border-radius: 10px !important; box-shadow: 0 16px 40px rgba(0,0,0,0.8) !important; backdrop-filter: blur(12px); }
+    .leaflet-popup-tip { background: rgba(8,13,26,0.97) !important; }
+    .leaflet-popup-content { margin: 10px 12px !important; }
+    .pu-title { font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: 7px; }
+    .pu-row { font-size: 0.74rem; color: var(--muted); margin: 3px 0; display: flex; gap: 6px; }
+    .pu-row b { color: var(--text); }
+
+    /* ANIMATIONS */
+    @keyframes criticalPulse { 0% { box-shadow: 0 0 0 0 rgba(255,61,87,0.7); } 70% { box-shadow: 0 0 0 9px rgba(255,61,87,0); } 100% { box-shadow: 0 0 0 0 rgba(255,61,87,0); } }
+    @keyframes hospPulse { 0% { box-shadow: 0 0 0 0 rgba(255,179,0,0.7); } 70% { box-shadow: 0 0 0 8px rgba(255,179,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,179,0,0); } }
+    @keyframes ambFloat { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.08); } }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">🚨</div>
+      <div class="brand-name">Disaster<span>OS</span></div>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="kpi-strip">
+      <div class="kpi"><div class="status-dot"></div><span class="kpi-label">Active</span><span class="kpi-val" id="top-active">0</span></div>
+      <div class="kpi"><span class="kpi-label">Spawned</span><span class="kpi-val" id="top-total">0</span></div>
+      <div class="kpi"><span class="kpi-label">Reroutes</span><span class="kpi-val warn" id="top-reroutes">0</span></div>
+      <div class="kpi"><span class="kpi-label">Failed</span><span class="kpi-val danger" id="top-failed">0</span></div>
+      <div class="kpi"><span class="kpi-label">Avg Load</span><span class="kpi-val" id="top-load">0%</span></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn-pill" id="theme-toggle" onclick="toggleTheme()">☀ Light</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div id="map">
+      <div class="pandemic-vignette"></div>
+      <div id="scenario-badge"></div>
+      <div id="zoom-overlay">🎯 Tracking <span id="zoom-label">—</span> — Click map to exit</div>
+      <div id="queue-panel" class="hidden">
+        <div class="qp-head">
+          <span class="qp-title">🚨 Patient Queue</span>
+          <span class="qp-count" id="qp-count">0 active</span>
+        </div>
+        <div class="qp-body" id="qp-body"></div>
+      </div>
+      <div id="event-feed"></div>
+      <div id="detail-panel">
+        <div class="dp-topbar">
+          <span class="dp-icon" id="dp-icon">🚑</span>
+          <div class="dp-title-col">
+            <span class="dp-id" id="dp-id">—</span>
+            <span class="dp-type" id="dp-type">—</span>
+            <span class="dp-sev" id="dp-sev"></span>
+          </div>
+          <div class="dp-eta-col">
+            <span class="dp-eta-num" id="dp-eta">—</span>
+            <span class="dp-eta-lbl">min ETA</span>
+          </div>
+          <button class="dp-close" id="dp-close-btn" onclick="closeDetail()" title="Close">✕</button>
+        </div>
+        <div class="dp-body" id="dp-body"></div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="tabs">
+        <button class="tab active" data-tab="controls">Controls</button>
+        <button class="tab" data-tab="hospitals">Hospitals</button>
+        <button class="tab" data-tab="log">Log</button>
+      </div>
+
+      <!-- CONTROLS TAB -->
+      <div class="panel active" id="tab-controls">
+
+        <!-- Ambulance Dispatch (two-phase) -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--accent)"></div>
+            Ambulance Dispatch
+          </div>
+          <button class="btn-place" id="btn-place-incident" style="width:100%;margin-bottom:8px">
+            📍 Mark Incident Location
+          </button>
+          <div id="spawn-location-badge" style="display:none;margin-bottom:8px">
+            <div class="location-badge">
+              <span>📌</span>
+              <span id="spawn-loc-text">—</span>
+              <span class="loc-clear" id="spawn-loc-clear" title="Clear">✕</span>
+            </div>
+          </div>
+          <div class="spawn-row">
+            <button class="btn btn-primary btn-sm" id="spawn-ambulances" disabled style="flex:1">🚑 Dispatch Ambulance</button>
+          </div>
+          <div style="margin-top:4px;margin-bottom:8px">
+            <button class="btn btn-ghost btn-sm" id="btn-random-incidents" style="width:100%;font-size:0.62rem">🎲 Random Incidents (Auto)</button>
+          </div>
+          <div style="font-size:0.56rem;color:var(--muted);margin-bottom:8px">1 incident = 1 ambulance • Routes to incident → pick up → hospital</div>
+          <div class="stats-grid">
+            <div class="stat-box"><div class="stat-val" id="active-ambulances">0</div><div class="stat-label">Active</div></div>
+            <div class="stat-box"><div class="stat-val" id="spawned-total">0</div><div class="stat-label">Spawned</div></div>
+          </div>
+          <button class="btn btn-danger btn-sm btn-full" style="margin-top:8px" onclick="resetSimulation()">🔄 Reset Simulation</button>
+        </div>
+
+        <!-- Mass Incident -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:#ff2000"></div>
+            Incident Response
+            <span class="badge b-off" id="mi-badge">Standby</span>
+          </div>
+          <button class="btn-place" id="btn-place-mass" style="width:100%;margin-bottom:8px">
+            📍 Mark Mass Incident Location
+          </button>
+          <div id="mass-location-badge" style="display:none;margin-bottom:8px">
+            <div class="location-badge">
+              <span>📌</span>
+              <span id="mass-loc-text">—</span>
+              <span class="loc-clear" id="mass-loc-clear" title="Clear">✕</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;margin-bottom:10px">
+            <span style="font-size:0.72rem;color:var(--muted)">Casualties</span>
+            <input type="number" id="mi-count" min="5" max="30" value="12" style="width:56px">
+          </div>
+          <button class="btn-incident" id="btn-mass-incident" disabled>
+            <span class="btn-incident-icon">⚠️</span> TRIGGER MASS INCIDENT
+          </button>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span style="font-size:0.58rem;color:var(--muted)">Ambulances converge → pick up → distribute to hospitals</span>
+            <button class="btn btn-ghost btn-xs" id="btn-open-icc" style="display:none">📊 Situation</button>
+          </div>
+        </div>
+
+        <!-- Zoom Tracker -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--accent2)"></div>
+            Zoom Tracker
+            <span class="badge b-off" id="zoom-badge">Off</span>
+          </div>
+          <select id="zoom-select"><option value="">— Select Ambulance —</option></select>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-info btn-sm" id="btn-zoom-start" style="flex:1">🎯 Track</button>
+            <button class="btn btn-ghost btn-sm" id="btn-zoom-stop" style="flex:1">✕ Stop</button>
+          </div>
+        </div>
+
+        <!-- Pandemic -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--danger)"></div>
+            Pandemic Mode
+            <span class="badge b-off" id="pandemic-badge">Inactive</span>
+          </div>
+          <div class="slider-row"><label>Intensity</label><span class="slider-val" id="pandemic-val">5</span></div>
+          <input type="range" id="pandemic-slider" min="1" max="10" value="5">
+          <button class="btn btn-danger btn-sm btn-full" id="btn-pandemic">🦠 Start Pandemic</button>
+        </div>
+
+        <!-- Traffic -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--warn)"></div>
+            Traffic Control
+            <span class="badge b-off" id="traffic-badge">Normal</span>
+          </div>
+          <div class="slider-row"><label>Multiplier</label><span class="slider-val" id="traffic-val">1.0×</span></div>
+          <input type="range" id="traffic-slider" min="10" max="40" value="10" step="5">
+          <button class="btn btn-warn btn-sm btn-full" id="btn-traffic">🚦 Apply Traffic</button>
+        </div>
+
+        <!-- Sim Speed -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--ok)"></div>
+            Simulation Speed
+          </div>
+          <div class="slider-row"><label>Steps / frame</label><span class="slider-val" id="speed-val">0.12</span></div>
+          <input type="range" id="speed-slider" min="1" max="20" value="2" step="1">
+          <div style="font-size:0.65rem;color:var(--muted);margin-top:-5px">← Realistic · Fast →</div>
+        </div>
+
+        <!-- System Metrics -->
+        <div class="card">
+          <div class="sec-hdr">
+            <div class="sec-dot" style="background:var(--accent2)"></div>
+            System Metrics
+          </div>
+          <div class="stats-grid">
+            <div class="stat-box"><div class="stat-val" id="reroutes-count">0</div><div class="stat-label">Reroutes</div></div>
+            <div class="stat-box"><div class="stat-val danger" id="failed-count">0</div><div class="stat-label">Failed</div></div>
+            <div class="stat-box"><div class="stat-val" id="avg-load">0%</div><div class="stat-label">Avg Load</div></div>
+            <div class="stat-box"><div class="stat-val warn" id="overloaded-count">0</div><div class="stat-label">Overloaded</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HOSPITALS TAB -->
+      <div class="panel" id="tab-hospitals">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-shrink:0">
+          <span style="font-size:0.68rem;color:var(--muted)">Override hospital state</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-info btn-xs" id="toggle-all-hospitals">👁 Show All</button>
+            <button class="btn btn-success btn-xs" id="recover-all">↺ Recover All</button>
+          </div>
+        </div>
+        <div id="hospital-list" style="flex:1;overflow-y:auto;min-height:0"></div>
+      </div>
+
+      <!-- LOG TAB -->
+      <div class="panel" id="tab-log">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;margin-bottom:6px">
+          <span style="font-size:0.68rem;color:var(--muted)">Activity Log</span>
+          <button class="btn btn-ghost btn-xs" id="clear-log">Clear</button>
+        </div>
+        <div class="log-wrap" id="activity-log">
+          <div class="le le-info">[init] DisasterOS ready</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ICC OVERLAY -->
+  <div id="icc-overlay">
+    <div class="icc-header">
+      <div class="icc-header-icon">⚠️</div>
+      <div class="icc-title">INCIDENT COMMAND CENTER<span id="icc-subtitle">Mass casualty response in progress</span></div>
+      <div class="icc-elapsed"><span id="icc-elapsed-val">00:00</span><small>Elapsed</small></div>
+      <button class="icc-close" id="icc-close-btn">✕ Close</button>
+    </div>
+    <div class="icc-body">
+      <div class="icc-card full">
+        <div class="icc-card-title">📊 Response Metrics</div>
+        <div class="icc-kpi-grid">
+          <div class="icc-kpi"><div class="icc-kpi-val" style="color:var(--danger)" id="icc-total">0</div><div class="icc-kpi-lbl">Total Casualties</div></div>
+          <div class="icc-kpi"><div class="icc-kpi-val" style="color:var(--accent)" id="icc-dispatched">0</div><div class="icc-kpi-lbl">Dispatched</div></div>
+          <div class="icc-kpi"><div class="icc-kpi-val" style="color:var(--warn)" id="icc-enroute">0</div><div class="icc-kpi-lbl">En Route</div></div>
+          <div class="icc-kpi"><div class="icc-kpi-val" style="color:var(--ok)" id="icc-arrived">0</div><div class="icc-kpi-lbl">Delivered</div></div>
+        </div>
+      </div>
+      <div class="icc-card">
+        <div class="icc-card-title">🚨 Severity Breakdown</div>
+        <div id="icc-severity-bars"></div>
+      </div>
+      <div class="icc-card span2">
+        <div class="icc-card-title">🏥 Hospital Load Distribution</div>
+        <div id="icc-hospital-bars"></div>
+      </div>
+      <div class="icc-card full">
+        <div class="icc-card-title">📅 Response Timeline</div>
+        <div class="icc-timeline" id="icc-timeline"></div>
+      </div>
+    </div>
+    <div class="icc-footer">
+      <span style="font-size:0.68rem;color:var(--muted);white-space:nowrap">🚑 Response Progress</span>
+      <div class="icc-progress-bar"><div class="icc-progress-fill" id="icc-progress-fill" style="width:0%"></div></div>
+      <span class="icc-progress-text" id="icc-progress-text">0 / 0</span>
+    </div>
+  </div>
+
+  <script>
+    // ══════════════════════════════════════
+    // DATA
+    // ══════════════════════════════════════
+    const MOCK_HOSPITALS = [
+      { id: 'H001', name: 'Yashoda Hospital Somajiguda', lat: 17.4290, lng: 78.4550, type: 'GENERAL', status: 'NORMAL', beds: 120, icu_beds: 25, current_load: 42 },
+      { id: 'H002', name: 'Apollo Hospitals Jubilee Hills', lat: 17.4316, lng: 78.4071, type: 'GENERAL', status: 'NORMAL', beds: 200, icu_beds: 40, current_load: 55 },
+      { id: 'H003', name: 'KIMS Hospital Secunderabad', lat: 17.4064, lng: 78.5480, type: 'GENERAL', status: 'NORMAL', beds: 180, icu_beds: 35, current_load: 38 },
+      { id: 'H004', name: 'Osmania General Hospital', lat: 17.3850, lng: 78.4670, type: 'GENERAL', status: 'NORMAL', beds: 300, icu_beds: 50, current_load: 65 },
+      { id: 'H005', name: "Nizam's Institute (NIMS)", lat: 17.4123, lng: 78.4551, type: 'GENERAL', status: 'NORMAL', beds: 250, icu_beds: 60, current_load: 70 },
+      { id: 'H006', name: 'Care Hospital Banjara Hills', lat: 17.4176, lng: 78.4325, type: 'GENERAL', status: 'NORMAL', beds: 150, icu_beds: 30, current_load: 48 },
+      { id: 'H007', name: 'Star Hospital Banjara Hills', lat: 17.4033, lng: 78.4363, type: 'GENERAL', status: 'NORMAL', beds: 140, icu_beds: 28, current_load: 50 },
+      { id: 'H008', name: 'Global Hospitals Lakdi-ka-Pool', lat: 17.4030, lng: 78.4667, type: 'GENERAL', status: 'NORMAL', beds: 160, icu_beds: 32, current_load: 44 },
+      { id: 'H009', name: 'Sunshine Hospital Begumpet', lat: 17.4570, lng: 78.3780, type: 'GENERAL', status: 'NORMAL', beds: 130, icu_beds: 22, current_load: 35 },
+      { id: 'H010', name: 'Fernandez Hospital Bogulkunta', lat: 17.4095, lng: 78.4834, type: 'GENERAL', status: 'NORMAL', beds: 100, icu_beds: 15, current_load: 58 },
+      { id: 'H011', name: "Rainbow Children's Hospital", lat: 17.4460, lng: 78.3950, type: 'GENERAL', status: 'NORMAL', beds: 90, icu_beds: 18, current_load: 40 },
+      { id: 'H012', name: 'MaxCure Hospital Madhapur', lat: 17.4500, lng: 78.3900, type: 'GENERAL', status: 'NORMAL', beds: 110, icu_beds: 20, current_load: 36 },
+    ];
+
+    const PATIENT_TYPES = [
+      { type: 'Cardiac Arrest', icon: '❤️‍🔥', severity: 'critical', requires_icu: true, time_window: 8, score_bonus: 30, color: '#ff2040', desc: 'Immediate cardiac intervention needed' },
+      { type: 'Stroke', icon: '🧠', severity: 'critical', requires_icu: true, time_window: 10, score_bonus: 28, color: '#ff4020', desc: 'Time-critical neurological emergency' },
+      { type: 'Trauma', icon: '🩸', severity: 'high', requires_icu: true, time_window: 15, score_bonus: 20, color: '#ff6d00', desc: 'Severe injury, possible surgery' },
+      { type: 'Pandemic Case', icon: '🦠', severity: 'high', requires_icu: false, time_window: 20, score_bonus: 15, color: '#c060ff', desc: 'Infectious isolation required' },
+      { type: 'Burns', icon: '🔥', severity: 'high', requires_icu: true, time_window: 20, score_bonus: 18, color: '#ff8800', desc: 'Severe burn injuries' },
+      { type: 'Respiratory', icon: '🫁', severity: 'medium', requires_icu: false, time_window: 30, score_bonus: 10, color: '#00aaff', desc: 'Breathing difficulties' },
+      { type: 'Fracture', icon: '🦴', severity: 'medium', requires_icu: false, time_window: 60, score_bonus: 5, color: '#ffb300', desc: 'Bone fracture, stable' },
+      { type: 'General', icon: '🏥', severity: 'low', requires_icu: false, time_window: 90, score_bonus: 0, color: '#00e676', desc: 'Non-emergency transport' },
+    ];
+
+    function randomPatientType() {
+      const weights = [8, 8, 12, 10, 6, 14, 18, 24];
+      const total = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * total;
+      for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) return PATIENT_TYPES[i]; }
+      return PATIENT_TYPES[PATIENT_TYPES.length - 1];
+    }
+
+    // ══════════════════════════════════════
+    // STATE
+    // ══════════════════════════════════════
+    const S = {
+      pandemicActive: false, pandemicIntensity: 5,
+      trafficMultiplier: 1.0,
+      hospitals: [], ambulances: [],
+      metrics: { reroutes: 0, spawnedTotal: 0 },
+      map: null, hMarkers: {},
+      // OSRM request queue (v9 feature — staggers requests)
+      _routeQueue: [], _routeQueueRunning: false,
+      lightTheme: false,
+      zoomTracking: null, zoomInterval: null,
+      routeSpeedSteps: 0.12,
+      detailAmbId: null,
+      showAllHospitals: false,
+      massIncidentActive: false,
+      // Incident placement
+      incidentPlacement: { active: false, marker: null, latlng: null },
+      massPlacement: { active: false, marker: null, latlng: null },
+      placementMode: null,
+      // ICC
+      icc: {
+        active: false, startTime: null, totalCasualties: 0, dispatched: 0, arrived: 0,
+        ambIds: new Set(), sevCounts: { critical: 0, high: 0, medium: 0, low: 0 },
+        hospAssignments: {}, timeline: [], epicenterMarker: null,
+        updateInterval: null, elapsedInterval: null,
+      },
+    };
+
+    const SPEED_TABLE = [0.05, 0.08, 0.12, 0.17, 0.22, 0.28, 0.35, 0.43, 0.52, 0.62, 0.74, 0.88, 1.04, 1.22, 1.42, 1.65, 1.9, 2.2, 2.55, 3.0];
+
+    const AMB_BASES = [
+      { lat: 17.445, lng: 78.350 }, { lat: 17.460, lng: 78.420 }, { lat: 17.380, lng: 78.500 },
+      { lat: 17.400, lng: 78.380 }, { lat: 17.440, lng: 78.490 }, { lat: 17.370, lng: 78.430 },
+      { lat: 17.430, lng: 78.530 }, { lat: 17.465, lng: 78.470 }, { lat: 17.390, lng: 78.360 }, { lat: 17.410, lng: 78.510 },
+    ];
+
+    function randomBase() {
+      const base = AMB_BASES[Math.floor(Math.random() * AMB_BASES.length)];
+      return { lat: base.lat + (Math.random() - 0.5) * 0.01, lng: base.lng + (Math.random() - 0.5) * 0.01 };
+    }
+
+    let nextId = 1000;
+
+    // ══════════════════════════════════════
+    // THEME
+    // ══════════════════════════════════════
+    function toggleTheme() {
+      S.lightTheme = !S.lightTheme;
+      document.body.classList.toggle('light', S.lightTheme);
+      document.getElementById('theme-toggle').textContent = S.lightTheme ? '🌙 Dark' : '☀ Light';
+      if (S.map) {
+        S._tileLayer && S.map.removeLayer(S._tileLayer);
+        const url = S.lightTheme
+          ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        S._tileLayer = L.tileLayer(url, { attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(S.map);
+      }
+    }
+
+    // ══════════════════════════════════════
+    // TABS
+    // ══════════════════════════════════════
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+      });
+    });
+
+    // ══════════════════════════════════════
+    // LOG & EVENTS
+    // ══════════════════════════════════════
+    function log(msg, type = 'info') {
+      const ts = new Date().toLocaleTimeString('en', { hour12: false });
+      const el = document.createElement('div');
+      el.className = `le le-${type}`;
+      el.textContent = `[${ts}] ${msg}`;
+      const box = document.getElementById('activity-log');
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+      while (box.children.length > 200) box.removeChild(box.firstChild);
+    }
+
+    function showEvent(msg, type = 'info') {
+      const feed = document.getElementById('event-feed');
+      const el = document.createElement('div');
+      el.className = `ef-item ${type}`;
+      el.textContent = msg;
+      feed.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(10px)'; setTimeout(() => el.remove(), 300); }, 3500);
+      while (feed.children.length > 4) feed.removeChild(feed.firstChild);
+    }
+
+    document.getElementById('clear-log').addEventListener('click', () => { document.getElementById('activity-log').innerHTML = ''; });
+
+    // ══════════════════════════════════════
+    // RESET SIMULATION
+    // ══════════════════════════════════════
+    function resetSimulation() {
+      if (!confirm('Reset all ambulances and restore hospitals to initial state?')) return;
+      S.ambulances.forEach(amb => {
+        if (amb.marker) amb.marker.remove();
+        if (amb.fallbackPolyline) amb.fallbackPolyline.remove();
+        if (amb.activePolyline) amb.activePolyline.remove();
+      });
+      S.ambulances = [];
+      S.metrics.spawnedTotal = 0;
+      S.metrics.reroutes = 0;
+      S.hospitals = MOCK_HOSPITALS.map(h => ({ ...h }));
+      S.hospitals.forEach(h => updateHospitalMarker(h));
+      stopZoomTracking();
+      closeDetail();
+      renderHospitalList();
+      updateMetrics();
+      renderQueuePanel();
+      updateZoomSelect();
+      syncHospitalMarkers();
+      log('🔄 Simulation reset', 'success');
+      showEvent('Simulation reset', 'ok');
+    }
+
+    // ══════════════════════════════════════
+    // DETAIL PANEL
+    // ══════════════════════════════════════
+    function openDetail(ambId) {
+      S.detailAmbId = ambId;
+      refreshDetail();
+      document.getElementById('detail-panel').classList.add('open');
+    }
+
+    function closeDetail() {
+      S.detailAmbId = null;
+      document.getElementById('detail-panel').classList.remove('open');
+    }
+
+    function refreshDetail() {
+      const amb = S.ambulances.find(a => a.id === S.detailAmbId);
+      if (!amb) { closeDetail(); return; }
+      const pt = amb.patientType || PATIENT_TYPES[7];
+      const h = S.hospitals.find(x => x.id === amb.assigned_hospital_id);
+      const SEV = { critical: '#ff2040', high: '#ff7040', medium: '#ffa726', low: '#00e676' };
+      const sc = SEV[pt.severity] || '#00e676';
+      document.getElementById('dp-icon').textContent = pt.icon;
+      document.getElementById('dp-id').textContent = amb.id;
+      document.getElementById('dp-type').textContent = pt.type;
+      document.getElementById('dp-type').style.color = sc;
+      const sevEl = document.getElementById('dp-sev');
+      sevEl.textContent = pt.severity;
+      sevEl.style.cssText = `background:${sc}22;color:${sc}`;
+      const etaEl = document.getElementById('dp-eta');
+      etaEl.textContent = amb.eta ?? '?';
+      etaEl.style.color = sc;
+
+      const dec = mockDecide(amb);
+      const candidates = dec ? dec.all_candidates : [];
+      const winner = candidates[0];
+      const maxScore = winner ? (winner.score || 1) : 1;
+
+      let chipsHTML = `<div class="dp-chips">
+        <span class="dp-chip">🏥 <b>${h ? h.name.split(' ').slice(0, 3).join(' ') : '—'}</b></span>
+        <span class="dp-chip">⏰ <b style="color:${sc}">${pt.time_window}m window</b></span>
+        <span class="dp-chip">🚑 <b>${amb.requires_icu ? 'ICU needed' : 'No ICU'}</b></span>
+        <span class="dp-chip" style="border-color:${sc}33">💬 <b style="color:${sc};font-size:0.59rem">${pt.desc}</b></span>
+      </div>`;
+
+      let factorsHTML = '';
+      if (winner) {
+        const bd = winner.breakdown;
+        const factors = [
+          { lbl: 'Distance', val: bd.distScore, max: 100, color: '#00e5ff', txt: `${bd.distKm}km → ${bd.distScore}` },
+          { lbl: 'Capacity', val: bd.loadScore, max: 100, color: '#00e676', txt: `${bd.load}% load → ${bd.loadScore}` },
+          { lbl: 'ICU Match', val: bd.icuBonus, max: 20, color: '#7c4dff', txt: bd.icuBonus > 0 ? `+${bd.icuBonus}` : '0' },
+          { lbl: 'Severity', val: bd.severityBonus, max: 10, color: sc, txt: `+${bd.severityBonus}` },
+        ];
+        factorsHTML = `<div class="dp-sec">🧠 AI Scoring Factors</div>` +
+          factors.map(f => `<div class="dp-factor">
+            <span class="dp-f-lbl">${f.lbl}</span>
+            <div class="dp-f-track"><div class="dp-f-bar" style="width:${Math.min(100,(f.val/f.max)*100).toFixed(0)}%;background:${f.color}"></div></div>
+            <span class="dp-f-val" style="color:${f.color}">${f.txt}</span>
+          </div>`).join('');
+      }
+
+      const candsHTML = candidates.length ? `<div class="dp-sec">🏆 Hospital Candidates</div><div class="dp-cands">` +
+        candidates.map((c, i) => {
+          const isWin = i === 0;
+          const pct = Math.round((c.score / maxScore) * 100);
+          const barC = isWin ? '#00e676' : i === 1 ? '#ffa726' : '#3a5070';
+          return `<div class="dp-cand ${isWin ? 'winner' : ''}">
+            <div class="dp-cand-tag">${isWin ? '✓ BEST' : `#${i + 1}`}</div>
+            <div class="dp-cand-name">${c.name}</div>
+            <div class="dp-cand-bar-track"><div class="dp-cand-bar-fill" style="width:${pct}%;background:${barC}"></div></div>
+            <div class="dp-cand-meta">
+              <span>📍 <b>${c.breakdown.distKm}km</b></span>
+              <span>📊 <b>${c.breakdown.load}%</b></span>
+              <span>⏱ <b>${c.eta_minutes}m</b></span>
+              <span>🛏 <b>${c.breakdown.icu_beds} ICU</b></span>
+            </div>
+            <span class="dp-cand-score">${c.score}</span>
+          </div>`;
+        }).join('') + `</div>` : '';
+
+      document.getElementById('dp-body').innerHTML = chipsHTML + factorsHTML + candsHTML +
+        `<div class="dp-formula">score = dist×0.45 + load×0.45 + icu_bonus + severity_bonus</div>`;
+    }
+
+    setInterval(() => { if (S.detailAmbId) refreshDetail(); }, 2000);
+
+    // ══════════════════════════════════════
+    // SCENARIO BADGE
+    // ══════════════════════════════════════
+    function showScenarioBadge(text, type) {
+      const el = document.getElementById('scenario-badge');
+      el.style.display = 'block';
+      el.innerHTML = `<div class="scenario-pill ${type}"><div class="pill-dot"></div>${text}</div>`;
+    }
+    function hideScenarioBadge() { document.getElementById('scenario-badge').style.display = 'none'; }
+
+    // ══════════════════════════════════════
+    // MAP INIT
+    // ══════════════════════════════════════
+    function initMap() {
+      S.map = L.map('map', { zoomControl: true }).setView([17.415, 78.455], 12);
+      S._tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+      }).addTo(S.map);
+      S.map.on('click', (e) => {
+        if (S.placementMode) {
+          placeIncidentMarker(S.placementMode, e.latlng.lat, e.latlng.lng);
+          return;
+        }
+        stopZoomTracking();
+        if (S.detailAmbId) closeDetail();
+      });
+    }
+
+    // ══════════════════════════════════════
+    // ZOOM TRACKER
+    // ══════════════════════════════════════
+    function updateZoomSelect() {
+      const sel = document.getElementById('zoom-select');
+      if (!sel) return;
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— Select Ambulance —</option>';
+      S.ambulances.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        const pt = a.patientType;
+        const sevLabel = pt ? pt.type : (a.requires_icu ? 'ICU' : 'Stable');
+        const statusLabel = a.status === 'EN_ROUTE' ? '🚑 En Route' : a.status === 'TO_INCIDENT' ? '🔵 To Scene' : a.status === 'PICKING_UP' ? '⏳ Pickup' : '✅ Arrived';
+        opt.textContent = `${a.id} · ${statusLabel} · ${sevLabel}`;
+        sel.appendChild(opt);
+      });
+      if (prev && S.ambulances.find(a => a.id === prev)) sel.value = prev;
+    }
+
+    document.getElementById('btn-zoom-start').addEventListener('click', () => {
+      const id = document.getElementById('zoom-select').value;
+      if (!id) { showEvent('Select an ambulance first', 'warn'); return; }
+      startZoomTracking(id);
+    });
+    document.getElementById('btn-zoom-stop').addEventListener('click', () => stopZoomTracking());
+
+    function startZoomTracking(ambId) {
+      stopZoomTracking();
+      S.zoomTracking = ambId;
+      document.getElementById('zoom-badge').textContent = 'Active';
+      document.getElementById('zoom-badge').className = 'badge b-info';
+      document.getElementById('zoom-label').textContent = ambId;
+      document.getElementById('zoom-overlay').style.display = 'block';
+      function track() {
+        const amb = S.ambulances.find(a => a.id === S.zoomTracking);
+        if (!amb) { stopZoomTracking(); return; }
+        if (S.map && amb.lat && amb.lng) S.map.setView([amb.lat, amb.lng], 15, { animate: true, duration: 0.5 });
+      }
+      track();
+      S.zoomInterval = setInterval(track, 800);
+    }
+
+    function stopZoomTracking() {
+      if (!S.zoomTracking) return;
+      clearInterval(S.zoomInterval);
+      S.zoomTracking = null; S.zoomInterval = null;
+      document.getElementById('zoom-badge').textContent = 'Off';
+      document.getElementById('zoom-badge').className = 'badge b-off';
+      document.getElementById('zoom-overlay').style.display = 'none';
+    }
+
+    // ══════════════════════════════════════
+    // HOSPITAL MARKERS — on-demand (v10: show only active or all)
+    // ══════════════════════════════════════
+    function hospitalColor(h) {
+      if (h.status === 'OFFLINE') return '#ff3d57';
+      if (h.status === 'OVERLOADED') return '#ffa726';
+      if (h.current_load > 75) return '#ff9800';
+      return '#00e676';
+    }
+
+    function makeHospitalIcon(h) {
+      const c = hospitalColor(h);
+      const pulse = h.current_load > 85 ? 'animation:hospPulse 1.4s ease-out infinite;' : '';
+      const emoji = h.type === 'ISOLATION_WARD' ? '⛺' : '🏥';
+      return L.divIcon({
+        html: `<div style="width:30px;height:30px;background:${c};border-radius:50%;border:2.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:14px;${pulse};box-shadow:0 2px 12px rgba(0,0,0,0.5)">${emoji}</div>`,
+        className: '', iconSize: [30, 30], iconAnchor: [15, 15]
+      });
+    }
+
+    function addHospitalMarker(h) {
+      if (S.hMarkers[h.id]) return;
+      const m = L.marker([h.lat, h.lng], { icon: makeHospitalIcon(h), opacity: 0 }).addTo(S.map);
+      m.bindPopup(() => hospitalPopup(h), { maxWidth: 220 });
+      m.on('click', () => m.openPopup());
+      S.hMarkers[h.id] = m;
+      let op = 0;
+      const fadeIn = setInterval(() => { op = Math.min(1, op + 0.1); m.setOpacity(op); if (op >= 1) clearInterval(fadeIn); }, 30);
+    }
+
+    function removeHospitalMarker(hId) {
+      const m = S.hMarkers[hId]; if (!m) return;
+      let op = 1;
+      const fadeOut = setInterval(() => { op = Math.max(0, op - 0.1); m.setOpacity(op); if (op <= 0) { clearInterval(fadeOut); m.remove(); delete S.hMarkers[hId]; } }, 30);
+    }
+
+    function syncHospitalMarkers() {
+      const activeHospIds = new Set();
+      S.ambulances.forEach(a => { if (a.assigned_hospital_id) activeHospIds.add(a.assigned_hospital_id); });
+      S.hospitals.forEach(h => {
+        const shouldShow = S.showAllHospitals || S.pandemicActive || activeHospIds.has(h.id);
+        if (shouldShow) { if (!S.hMarkers[h.id]) addHospitalMarker(h); else updateHospitalMarker(h); }
+        else { if (S.hMarkers[h.id]) removeHospitalMarker(h.id); }
+      });
+    }
+
+    function updateHospitalMarker(h) {
+      const m = S.hMarkers[h.id]; if (!m) return;
+      m.setIcon(makeHospitalIcon(h));
+      if (m.isPopupOpen()) m.setPopupContent(hospitalPopup(h));
+    }
+
+    function hospitalPopup(h) {
+      const lc = h.current_load > 90 ? 'var(--danger)' : h.current_load > 70 ? 'var(--warn)' : 'var(--ok)';
+      const ambs = S.ambulances.filter(a => a.assigned_hospital_id === h.id && a.status === 'EN_ROUTE').length;
+      return `<div>
+        <div class="pu-title">${h.name}</div>
+        <div class="pu-row"><span>Status</span><b>${h.status}</b></div>
+        <div class="pu-row"><span>Load</span><b style="color:${lc}">${h.current_load.toFixed(0)}%</b></div>
+        <div class="pu-row"><span>🛏 Beds</span><b>${h.beds}</b></div>
+        <div class="pu-row"><span>🚑 ICU</span><b>${h.icu_beds}</b></div>
+        <div class="pu-row"><span>🚨 En Route</span><b style="color:var(--accent)">${ambs}</b></div>
+        <div class="pu-row"><span>Type</span><b>${h.type}</b></div>
+      </div>`;
+    }
+
+    // ══════════════════════════════════════
+    // AMBULANCE MARKERS
+    // ══════════════════════════════════════
+    function makeAmbIcon(amb) {
+      const pt = amb?.patientType;
+      const sev = pt?.severity || (amb?.requires_icu ? 'high' : 'low');
+      let bg, borderColor, extraStyle = '';
+      if (amb?.phase === 'to_incident' || amb?.status === 'TO_INCIDENT') {
+        bg = '#0088cc'; borderColor = '#00c8ff';
+        extraStyle = 'animation:ambFloat 1.2s ease-in-out infinite;';
+      } else if (amb?.status === 'PICKING_UP') {
+        bg = '#cc8800'; borderColor = '#ffcc00';
+        extraStyle = 'animation:ambFloat 0.6s ease-in-out infinite;';
+      } else {
+        bg = sev === 'critical' ? '#ff2040' : sev === 'high' ? '#ff7030' : amb?.requires_icu ? '#ff6090' : '#00c8f0';
+        borderColor = 'rgba(255,255,255,0.95)';
+        if (sev === 'critical') extraStyle = 'animation:ambFloat 0.8s ease-in-out infinite;';
+      }
+      const emoji = amb?.status === 'TO_INCIDENT' ? '🚑' : amb?.status === 'PICKING_UP' ? '⏳' : (pt?.icon || '🚑');
+      return L.divIcon({
+        html: `<div style="width:26px;height:26px;background:${bg};border-radius:50%;border:2px solid ${borderColor};display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,0.5);${extraStyle}">${emoji}</div>`,
+        className: '', iconSize: [26, 26], iconAnchor: [13, 13]
+      });
+    }
+
+    function addAmbMarker(amb) {
+      const m = L.marker([amb.lat, amb.lng], { icon: makeAmbIcon(amb), keyboard: false, bubblingMouseEvents: false }).addTo(S.map);
+      m.bindPopup(() => simpleAmbPopup(amb), { maxWidth: 200, autoClose: true, closeOnClick: false, closeButton: true });
+      m.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        openDetail(amb.id);
+        const sel = document.getElementById('zoom-select');
+        if (sel) sel.value = amb.id;
+      });
+      amb.marker = m;
+      buildRoute(amb);
+    }
+
+    function simpleAmbPopup(amb) {
+      const pt = amb.patientType || PATIENT_TYPES[7];
+      const SEV = { critical: '#ff2040', high: '#ff7040', medium: '#ffa726', low: '#00e676' };
+      const sc = SEV[pt.severity] || '#00e676';
+      return `<div>
+        <div class="pu-title" style="color:${sc}">${pt.icon} ${amb.id}</div>
+        <div class="pu-row"><span>Type</span><b style="color:${sc}">${pt.type}</b></div>
+        <div class="pu-row"><span>Status</span><b>${amb.status}</b></div>
+        <div class="pu-row"><span>ETA</span><b>${amb.eta ?? '?'} min</b></div>
+        <div style="font-size:0.63rem;color:var(--muted);margin-top:5px">Click to open full detail panel</div>
+      </div>`;
+    }
+
+    // ══════════════════════════════════════
+    // DECISION ENGINE
+    // ══════════════════════════════════════
+    function mockDecide(amb, balanced = false, batchAssignments = {}) {
+      const usable = S.hospitals.filter(h => hospitalUsable(h, amb));
+      if (!usable.length) return null;
+      const pt = amb.patientType || PATIENT_TYPES[7];
+      const scored = usable.map(h => {
+        const distKm = Math.hypot(h.lat - amb.lat, h.lng - amb.lng) * 111;
+        const distScore = Math.max(0, 100 - distKm * 8);
+        const loadScore = 100 - h.current_load;
+        const icuBonus = (amb.requires_icu && h.icu_beds > 5) ? 20 : 0;
+        const severityBonus = pt.score_bonus;
+        const typeBonus = h.type === 'ISOLATION_WARD' ? (S.pandemicActive ? 15 : -10) : 0;
+        const batchPenalty = balanced ? (batchAssignments[h.id] || 0) * 18 : 0;
+        const total = distScore * 0.45 + loadScore * 0.45 + icuBonus + typeBonus + (severityBonus * 0.1) - batchPenalty;
+        const etaMin = Math.max(1, Math.round(distKm * 2.5 * S.trafficMultiplier));
+        return {
+          hospital_id: h.id, name: h.name, score: Math.round(total), eta_minutes: etaMin,
+          breakdown: { distScore: Math.round(distScore), loadScore: Math.round(loadScore), icuBonus, severityBonus: Math.round(severityBonus * 0.1), typeBonus, distKm: distKm.toFixed(1), load: h.current_load.toFixed(0), icu_beds: h.icu_beds, beds: h.beds },
+          reasons: [`Load:${h.current_load.toFixed(0)}%`, `${distKm.toFixed(1)}km`, h.icu_beds > 0 ? `ICU:${h.icu_beds}` : '']
+        };
+      }).sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      return { hospital_id: best.hospital_id, reason: best.reasons.filter(Boolean).join(', '), score: best.score, raw: best, eta_minutes: best.eta_minutes, all_candidates: scored.slice(0, 4), patientType: pt };
+    }
+
+    function hospitalUsable(h, amb) {
+      if (!h || h.status === 'OFFLINE') return false;
+      if (h.current_load >= 100) return false;
+      if (amb.requires_icu && h.icu_beds <= 0) return false;
+      return true;
+    }
+
+    function nearestWard(amb) {
+      const wards = S.hospitals.filter(h => h.type === 'ISOLATION_WARD' && hospitalUsable(h, amb)).sort((a, b) => Math.hypot(a.lat - amb.lat, a.lng - amb.lng) - Math.hypot(b.lat - amb.lat, b.lng - amb.lng));
+      if (wards.length) return wards[0];
+      return S.hospitals.filter(h => hospitalUsable(h, amb)).sort((a, b) => Math.hypot(a.lat - amb.lat, a.lng - amb.lng) - Math.hypot(b.lat - amb.lat, b.lng - amb.lng))[0] ?? null;
+    }
+
+    // ══════════════════════════════════════
+    // INCIDENT PLACEMENT
+    // ══════════════════════════════════════
+    function enterPlacementMode(mode) {
+      if (S.placementMode === mode) { exitPlacementMode(); return; }
+      S.placementMode = mode;
+      document.body.classList.add('placement-active');
+      document.getElementById('btn-place-incident').classList.remove('active');
+      document.getElementById('btn-place-mass').classList.remove('active');
+      document.getElementById(mode === 'spawn' ? 'btn-place-incident' : 'btn-place-mass').classList.add('active');
+      log(`📍 Click map to mark ${mode === 'mass' ? 'mass incident' : 'incident'} location`, 'info');
+      showEvent(`📍 Click map to place ${mode === 'mass' ? 'mass incident' : 'incident'}`, 'warn');
+    }
+
+    function exitPlacementMode() {
+      S.placementMode = null;
+      document.body.classList.remove('placement-active');
+      document.getElementById('btn-place-incident').classList.remove('active');
+      document.getElementById('btn-place-mass').classList.remove('active');
+    }
+
+    function placeIncidentMarker(mode, lat, lng) {
+      const placement = mode === 'spawn' ? S.incidentPlacement : S.massPlacement;
+      if (placement.marker) placement.marker.remove();
+      const pinIcon = L.divIcon({
+        className: '',
+        html: `<div class="incident-pin"><div class="incident-pin-ring"></div><div class="incident-pin-ring"></div><div class="incident-pin-core">🚨</div></div>`,
+        iconSize: [32, 32], iconAnchor: [16, 16]
+      });
+      placement.marker = L.marker([lat, lng], { icon: pinIcon, zIndexOffset: 1500 }).addTo(S.map);
+      placement.latlng = { lat, lng };
+      placement.active = true;
+      if (mode === 'spawn') {
+        document.getElementById('spawn-location-badge').style.display = 'block';
+        document.getElementById('spawn-loc-text').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        document.getElementById('spawn-ambulances').disabled = false;
+      } else {
+        document.getElementById('mass-location-badge').style.display = 'block';
+        document.getElementById('mass-loc-text').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        document.getElementById('btn-mass-incident').disabled = false;
+      }
+      exitPlacementMode();
+      log(`📍 ${mode === 'mass' ? 'Mass incident' : 'Incident'} location marked at [${lat.toFixed(4)}, ${lng.toFixed(4)}]`, 'success');
+      showEvent('📍 Location marked', 'ok');
+    }
+
+    function clearPlacement(mode) {
+      const placement = mode === 'spawn' ? S.incidentPlacement : S.massPlacement;
+      if (placement.marker) { placement.marker.remove(); placement.marker = null; }
+      placement.latlng = null; placement.active = false;
+      if (mode === 'spawn') {
+        document.getElementById('spawn-location-badge').style.display = 'none';
+        document.getElementById('spawn-ambulances').disabled = true;
+      } else {
+        document.getElementById('mass-location-badge').style.display = 'none';
+        document.getElementById('btn-mass-incident').disabled = true;
+      }
+    }
+
+    document.getElementById('btn-place-incident').addEventListener('click', () => enterPlacementMode('spawn'));
+    document.getElementById('btn-place-mass').addEventListener('click', () => enterPlacementMode('mass'));
+    document.getElementById('spawn-loc-clear').addEventListener('click', () => clearPlacement('spawn'));
+    document.getElementById('mass-loc-clear').addEventListener('click', () => clearPlacement('mass'));
+
+    // ══════════════════════════════════════
+    // RANDOM INCIDENTS AUTO-GEN
+    // ══════════════════════════════════════
+    let randomIncidentTimer = null;
+    document.getElementById('btn-random-incidents').addEventListener('click', (e) => {
+      if (randomIncidentTimer) {
+        clearTimeout(randomIncidentTimer);
+        randomIncidentTimer = null;
+        e.target.textContent = '🎲 Random Incidents (Auto)';
+        e.target.className = 'btn btn-ghost btn-sm';
+        log('⏸ Random incident generator stopped', 'info');
+        return;
+      }
+      e.target.textContent = '⏹ Stop Random';
+      e.target.className = 'btn btn-danger btn-sm';
+      log('🎲 Random incident generator started', 'info');
+      showEvent('🎲 Random incidents active', 'warn');
+
+      function generateRandom() {
+        const lat = 17.415 + (Math.random() - 0.5) * 0.14;
+        const lng = 78.455 + (Math.random() - 0.5) * 0.14;
+        placeIncidentMarker('spawn', lat, lng);
+        setTimeout(() => spawnAmbulance(), 300);
+        if (randomIncidentTimer !== null) randomIncidentTimer = setTimeout(generateRandom, 4000 + Math.random() * 4000);
+      }
+      generateRandom();
+      randomIncidentTimer = true;
+    });
+
+    // ══════════════════════════════════════
+    // SPAWNER — TWO-PHASE ROUTING
+    // ══════════════════════════════════════
+    function spawnAmbulance() {
+      if (!S.incidentPlacement.latlng) { log('❌ No incident location — click 📍 Mark Incident first', 'danger'); return; }
+      const base = randomBase();
+      const incident = S.incidentPlacement.latlng;
+      const pt = randomPatientType();
+      const amb = {
+        id: `SIM-${nextId++}`,
+        lat: base.lat, lng: base.lng,
+        status: 'TO_INCIDENT', phase: 'to_incident',
+        requires_icu: pt.requires_icu, patientType: pt,
+        incidentLat: incident.lat, incidentLng: incident.lng,
+        assigned_hospital_id: null, decision_reason: null,
+        base_eta: null, eta: null, marker: null, isMoving: false,
+        currentRouteIndex: 0, routeCoordinates: null,
+        fallbackActive: false, fallbackPolyline: null, activePolyline: null,
+        routeReqId: null, lastRerouteTime: 0, spawnTime: Date.now(),
+      };
+      S.ambulances.push(amb);
+      S.metrics.spawnedTotal++;
+      log(`🚑 ${amb.id} [${pt.icon}${pt.type}] dispatched → incident [${incident.lat.toFixed(4)}, ${incident.lng.toFixed(4)}]`, 'info');
+      showEvent(`${pt.icon} ${amb.id} → incident`, 'warn');
+      addAmbMarker(amb);
+      updateMetrics(); updateZoomSelect(); renderQueuePanel(); syncHospitalMarkers();
+    }
+
+    document.getElementById('spawn-ambulances').addEventListener('click', spawnAmbulance);
+
+    // ══════════════════════════════════════
+    // MASS INCIDENT + ICC
+    // ══════════════════════════════════════
+    document.getElementById('btn-mass-incident').addEventListener('click', () => {
+      const count = Math.min(30, Math.max(5, parseInt(document.getElementById('mi-count').value) || 12));
+      triggerMassIncident(count);
+    });
+    document.getElementById('btn-open-icc').addEventListener('click', () => { if (S.icc.active) openICC(); });
+    document.getElementById('icc-close-btn').addEventListener('click', closeICC);
+
+    function triggerMassIncident(count) {
+      if (!S.massPlacement.latlng) { log('❌ No mass incident location — click 📍 Mark Location first', 'danger'); return; }
+      document.getElementById('btn-mass-incident').disabled = true;
+      const epicenter = S.massPlacement.latlng;
+      if (S.massPlacement.marker) { S.massPlacement.marker.remove(); S.massPlacement.marker = null; }
+      document.getElementById('mass-location-badge').style.display = 'none';
+
+      // Visual impact
+      document.body.classList.add('screen-shake');
+      setTimeout(() => document.body.classList.remove('screen-shake'), 600);
+      const flash = document.createElement('div');
+      flash.className = 'incident-flash';
+      document.body.appendChild(flash);
+      setTimeout(() => flash.remove(), 900);
+
+      // Epicenter marker
+      if (S.icc.epicenterMarker) { S.icc.epicenterMarker.remove(); S.icc.epicenterMarker = null; }
+      S.icc.epicenterMarker = L.marker([epicenter.lat, epicenter.lng], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="epicenter-marker"><div class="epicenter-ring"></div><div class="epicenter-ring"></div><div class="epicenter-ring"></div><div class="epicenter-core"></div></div>`,
+          iconSize: [60, 60], iconAnchor: [30, 30]
+        }),
+        zIndexOffset: 2000
+      }).addTo(S.map);
+
+      S.massIncidentActive = true;
+      S.icc.active = true;
+      S.icc.startTime = Date.now();
+      S.icc.totalCasualties = count;
+      S.icc.dispatched = 0;
+      S.icc.arrived = 0;
+      S.icc.ambIds = new Set();
+      S.icc.sevCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+      S.icc.hospAssignments = {};
+      S.icc.timeline = [];
+
+      document.getElementById('mi-badge').textContent = 'ACTIVE';
+      document.getElementById('mi-badge').className = 'badge b-err';
+      document.getElementById('btn-open-icc').style.display = 'inline-flex';
+      showScenarioBadge(`⚠️ MASS INCIDENT — ${count} casualties`, 'incident');
+      log(`⚠️ MASS INCIDENT TRIGGERED — ${count} casualties at [${epicenter.lat.toFixed(4)}, ${epicenter.lng.toFixed(4)}]`, 'danger');
+      showEvent(`⚠️ MASS INCIDENT: ${count} casualties!`, 'danger');
+      addICCTimeline('ALERT', `Mass incident declared — ${count} casualties reported`, 'critical');
+
+      if (S.map) S.map.setView([epicenter.lat, epicenter.lng], 14, { animate: true, duration: 1.2 });
+
+      const sevWeights = [25, 25, 20, 5, 10, 8, 5, 2];
+      function massPatientType() {
+        const total = sevWeights.reduce((a, b) => a + b, 0);
+        let r = Math.random() * total;
+        for (let i = 0; i < sevWeights.length; i++) { r -= sevWeights[i]; if (r <= 0) return PATIENT_TYPES[i]; }
+        return PATIENT_TYPES[0];
+      }
+
+      for (let i = 0; i < count; i++) {
+        setTimeout(() => {
+          const base = randomBase();
+          const pt = massPatientType();
+          const amb = {
+            id: `MCI-${nextId++}`,
+            lat: base.lat, lng: base.lng,
+            status: 'TO_INCIDENT', phase: 'to_incident',
+            requires_icu: pt.requires_icu, patientType: pt,
+            incidentLat: epicenter.lat, incidentLng: epicenter.lng,
+            assigned_hospital_id: null, decision_reason: null,
+            base_eta: null, eta: null, marker: null, isMoving: false,
+            currentRouteIndex: 0, routeCoordinates: null,
+            fallbackActive: false, fallbackPolyline: null, activePolyline: null,
+            routeReqId: null, lastRerouteTime: 0, spawnTime: Date.now(), isMCI: true,
+          };
+          S.ambulances.push(amb);
+          S.metrics.spawnedTotal++;
+          addAmbMarker(amb);
+          S.icc.ambIds.add(amb.id);
+          S.icc.dispatched++;
+          S.icc.sevCounts[pt.severity] = (S.icc.sevCounts[pt.severity] || 0) + 1;
+          log(`🚑 ${amb.id} [${pt.icon}] dispatched → epicenter`, 'info');
+          addICCTimeline('DISPATCH', `${amb.id} en route to scene (${pt.severity})`, 'dispatch');
+          updateMetrics(); updateZoomSelect(); renderQueuePanel(); syncHospitalMarkers();
+          if (S.icc.active) updateICC();
+        }, i * 350);
+      }
+
+      if (S.icc.updateInterval) clearInterval(S.icc.updateInterval);
+      S.icc.updateInterval = setInterval(() => {
+        if (!S.icc.active) return;
+        updateICC();
+        const remaining = [...S.icc.ambIds].filter(id => S.ambulances.find(a => a.id === id && (a.status === 'TO_INCIDENT' || a.status === 'PICKING_UP' || a.status === 'EN_ROUTE')));
+        if (remaining.length === 0 && S.icc.dispatched > 0) endMassIncident();
+      }, 1000);
+
+      if (S.icc.elapsedInterval) clearInterval(S.icc.elapsedInterval);
+      S.icc.elapsedInterval = setInterval(() => {
+        if (!S.icc.startTime) return;
+        const elapsed = Math.floor((Date.now() - S.icc.startTime) / 1000);
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const ss = String(elapsed % 60).padStart(2, '0');
+        const el = document.getElementById('icc-elapsed-val');
+        if (el) el.textContent = `${mm}:${ss}`;
+      }, 1000);
+    }
+
+    function endMassIncident() {
+      S.massIncidentActive = false;
+      clearInterval(S.icc.updateInterval);
+      clearInterval(S.icc.elapsedInterval);
+      S.icc.updateInterval = null; S.icc.elapsedInterval = null;
+      if (S.icc.epicenterMarker) { S.icc.epicenterMarker.remove(); S.icc.epicenterMarker = null; }
+      document.getElementById('mi-badge').textContent = 'Resolved';
+      document.getElementById('mi-badge').className = 'badge b-ok';
+      document.getElementById('btn-mass-incident').disabled = false;
+      hideScenarioBadge();
+      addICCTimeline('RESOLVED', `All ${S.icc.totalCasualties} casualties delivered. Incident resolved.`, 'arrival');
+      updateICC();
+      log(`✅ MASS INCIDENT RESOLVED — all ${S.icc.totalCasualties} casualties delivered`, 'success');
+      showEvent(`✅ Incident resolved — ${S.icc.totalCasualties} delivered`, 'ok');
+      setTimeout(() => {
+        S.icc.active = false;
+        document.getElementById('mi-badge').textContent = 'Standby';
+        document.getElementById('mi-badge').className = 'badge b-off';
+        document.getElementById('btn-open-icc').style.display = 'none';
+      }, 15000);
+    }
+
+    function openICC() { document.getElementById('icc-overlay').classList.add('open'); updateICC(); }
+    function closeICC() { document.getElementById('icc-overlay').classList.remove('open'); }
+
+    function addICCTimeline(type, msg, cls) {
+      const ts = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      S.icc.timeline.unshift({ ts, type, msg, cls });
+      if (S.icc.timeline.length > 100) S.icc.timeline.length = 100;
+    }
+
+    function updateICC() {
+      S.icc.arrived = S.icc.dispatched - [...S.icc.ambIds].filter(id => S.ambulances.find(a => a.id === id && (a.status === 'TO_INCIDENT' || a.status === 'PICKING_UP' || a.status === 'EN_ROUTE'))).length;
+      const enRoute = S.icc.dispatched - S.icc.arrived;
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      set('icc-total', S.icc.totalCasualties);
+      set('icc-dispatched', S.icc.dispatched);
+      set('icc-enroute', enRoute);
+      set('icc-arrived', S.icc.arrived);
+
+      const sevEl = document.getElementById('icc-severity-bars');
+      if (sevEl) {
+        const sevs = [
+          { lbl: 'Critical', key: 'critical', color: 'var(--danger)' },
+          { lbl: 'High', key: 'high', color: '#ff7030' },
+          { lbl: 'Medium', key: 'medium', color: 'var(--warn)' },
+          { lbl: 'Low', key: 'low', color: 'var(--ok)' },
+        ];
+        const maxSev = Math.max(1, ...Object.values(S.icc.sevCounts));
+        sevEl.innerHTML = sevs.map(s => {
+          const c = S.icc.sevCounts[s.key] || 0;
+          return `<div class="icc-sev-row">
+            <span class="icc-sev-lbl" style="color:${s.color}">${s.lbl}</span>
+            <div class="icc-sev-track"><div class="icc-sev-fill" style="width:${(c/maxSev)*100}%;background:${s.color}"></div></div>
+            <span class="icc-sev-count" style="color:${s.color}">${c}</span>
+          </div>`;
+        }).join('');
+      }
+
+      const hospEl = document.getElementById('icc-hospital-bars');
+      if (hospEl) {
+        const entries = Object.entries(S.icc.hospAssignments).map(([hId, count]) => {
+          const h = S.hospitals.find(x => x.id === hId);
+          return { name: h?.name?.split(' ').slice(0, 2).join(' ') || hId, count, load: h?.current_load || 0 };
+        }).sort((a, b) => b.count - a.count);
+        const maxCount = Math.max(1, ...entries.map(e => e.count));
+        hospEl.innerHTML = entries.map(e => {
+          const barColor = e.load > 90 ? 'var(--danger)' : e.load > 70 ? 'var(--warn)' : 'var(--ok)';
+          return `<div class="icc-hosp-item">
+            <span class="icc-hosp-name">${e.name}</span>
+            <div class="icc-hosp-bar"><div class="icc-hosp-fill" style="width:${(e.count/maxCount)*100}%;background:${barColor}"></div></div>
+            <span class="icc-hosp-count" style="color:${barColor}">${e.count} / ${e.load.toFixed(0)}%</span>
+          </div>`;
+        }).join('');
+      }
+
+      const tlEl = document.getElementById('icc-timeline');
+      if (tlEl) {
+        tlEl.innerHTML = S.icc.timeline.slice(0, 30).map(t => `
+          <div class="icc-tl-item">
+            <span class="icc-tl-time">${t.ts}</span>
+            <span class="icc-tl-text ${t.cls}">[${t.type}] ${t.msg}</span>
+          </div>`).join('');
+      }
+
+      const pctDone = S.icc.dispatched > 0 ? (S.icc.arrived / S.icc.dispatched) * 100 : 0;
+      const fillEl = document.getElementById('icc-progress-fill');
+      if (fillEl) fillEl.style.width = `${pctDone}%`;
+      set('icc-progress-text', `${S.icc.arrived} / ${S.icc.dispatched} delivered`);
+    }
+
+    // ══════════════════════════════════════
+    // REROUTING
+    // ══════════════════════════════════════
+    let rerouteInProgress = false;
+    function triggerReroute() {
+      if (rerouteInProgress) return;
+      rerouteInProgress = true;
+      let count = 0;
+      try {
+        for (const amb of [...S.ambulances]) {
+          if (amb.status !== 'EN_ROUTE') continue;
+          if (Date.now() - amb.lastRerouteTime < 4000) continue;
+          const target = S.hospitals.find(h => h.id === amb.assigned_hospital_id);
+          if (!hospitalUsable(target, amb)) { execReroute(amb); count++; continue; }
+          if (S.pandemicActive && target && target.current_load > 85) {
+            const dec = mockDecide(amb);
+            if (dec && dec.hospital_id !== amb.assigned_hospital_id) {
+              const newH = S.hospitals.find(h => h.id === dec.hospital_id);
+              if (newH && hospitalUsable(newH, amb) && newH.current_load < target.current_load - 10) { execReroute(amb, dec); count++; }
+            }
+          } else if (target && target.current_load > 85) {
+            const dec = mockDecide(amb);
+            if (dec && dec.hospital_id !== amb.assigned_hospital_id) {
+              const newH = S.hospitals.find(h => h.id === dec.hospital_id);
+              if (newH && hospitalUsable(newH, amb) && newH.current_load < target.current_load - 15) { execReroute(amb, dec); count++; }
+            }
+          }
+        }
+      } finally { rerouteInProgress = false; }
+      if (count > 0) { showEvent(`${count} ambulance${count > 1 ? 's' : ''} rerouted`, 'warn'); updateMetrics(); }
+    }
+
+    function execReroute(amb, preCalc = null) {
+      const dec = preCalc ?? mockDecide(amb);
+      if (!dec) {
+        const ward = nearestWard(amb);
+        if (ward) {
+          const oldH = S.hospitals.find(h => h.id === amb.assigned_hospital_id);
+          amb.assigned_hospital_id = ward.id;
+          amb.decision_reason = 'Emergency: Nearest Isolation Ward';
+          amb.lastRerouteTime = Date.now();
+          amb.base_eta = 15; amb.eta = 15;
+          S.metrics.reroutes++;
+          amb.isMoving = false; amb.fallbackActive = false;
+          amb.routeCoordinates = null; amb.currentRouteIndex = 0;
+          buildRoute(amb);
+          log(`🆘 ${amb.id}: ${oldH?.name ?? '?'} → ${ward.name}`, 'warning');
+          showEvent(`🔄 ${amb.id} → ${ward.name.split(' ')[0]}`, 'warn');
+        }
+        return;
+      }
+      if (dec.hospital_id !== amb.assigned_hospital_id) {
+        const oldH = S.hospitals.find(h => h.id === amb.assigned_hospital_id);
+        const newH = S.hospitals.find(h => h.id === dec.hospital_id);
+        if (!hospitalUsable(newH, amb)) return;
+        amb.assigned_hospital_id = dec.hospital_id;
+        amb.decision_reason = `Rerouted: ${dec.reason}`;
+        amb.lastRerouteTime = Date.now();
+        amb.isMoving = false;
+        if (amb.marker) amb.marker.setIcon(makeAmbIcon(amb));
+        setTimeout(() => {
+          amb.base_eta = dec.eta_minutes || 15;
+          amb.eta = Math.round(amb.base_eta * S.trafficMultiplier);
+          S.metrics.reroutes++;
+          amb.fallbackActive = false; amb.routeCoordinates = null; amb.currentRouteIndex = 0;
+          buildRoute(amb);
+          log(`🔄 ${amb.id}: ${oldH?.name ?? '?'} → ${newH?.name ?? '?'}`, 'success');
+          showEvent(`🔄 ${amb.id} rerouted → ${newH?.name?.split(' ')[0] ?? '?'}`, 'warn');
+        }, 1400);
+      }
+    }
+
+    // ══════════════════════════════════════
+    // ROUTING — v9 OSRM direct fetch with queue + two-phase awareness
+    // ══════════════════════════════════════
+    function enqueueRoute(amb) {
+      S._routeQueue.push(amb);
+      if (!S._routeQueueRunning) drainRouteQueue();
+    }
+
+    function drainRouteQueue() {
+      if (!S._routeQueue.length) { S._routeQueueRunning = false; return; }
+      S._routeQueueRunning = true;
+      const amb = S._routeQueue.shift();
+      fetchOSRMRoute(amb).finally(() => setTimeout(drainRouteQueue, 350));
+    }
+
+    async function fetchOSRMRoute(amb, retries = 2) {
+      const reqId = amb.routeReqId;
+      // Determine destination based on phase
+      let destLat, destLng;
+      if (amb.phase === 'to_incident') {
+        destLat = amb.incidentLat; destLng = amb.incidentLng;
+      } else {
+        const hosp = S.hospitals.find(h => h.id === amb.assigned_hospital_id);
+        if (!hosp || amb.routeReqId !== reqId) return;
+        destLat = hosp.lat; destLng = hosp.lng;
+      }
+
+      const url = `https://router.project-osrm.org/route/v1/driving/${amb.lng},${amb.lat};${destLng},${destLat}?overview=full&geometries=geojson&steps=false`;
+
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        if (amb.routeReqId !== reqId) return;
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 8000);
+          const res = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data.code !== 'Ok' || !data.routes?.length) throw new Error('No route');
+          if (amb.routeReqId !== reqId) return;
+          applyOSRMRoute(amb, destLat, destLng, data.routes[0]);
+          return;
+        } catch (e) {
+          if (amb.routeReqId !== reqId) return;
+          if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          else fallbackRoute(amb, { lat: destLat, lng: destLng }, reqId);
+        }
+      }
+    }
+
+    function applyOSRMRoute(amb, destLat, destLng, route) {
+      const coords = route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+      const pt = amb.patientType;
+      const sev = pt?.severity || 'low';
+      const lineColor = amb.phase === 'to_incident'
+        ? '#00c8ff'
+        : (sev === 'critical' ? '#ff2040' : sev === 'high' ? '#ff7030' : amb.requires_icu ? '#d060ff' : '#00c8f0');
+
+      if (amb.activePolyline) { amb.activePolyline.remove(); amb.activePolyline = null; }
+      if (amb.fallbackPolyline) { amb.fallbackPolyline.remove(); amb.fallbackPolyline = null; }
+
+      amb.activePolyline = L.polyline(coords.map(c => [c.lat, c.lng]), {
+        color: lineColor, weight: 3, opacity: 0.85,
+        dashArray: amb.phase === 'to_incident' ? '8,6' : null
+      }).addTo(S.map);
+
+      amb.fallbackActive = false;
+      amb.routeCoordinates = coords;
+      amb.currentRouteIndex = 0;
+      amb.totalDistance = route.distance;
+      if (!amb.isMoving) startMovement(amb);
+    }
+
+    function buildRoute(amb) {
+      amb.routeReqId = Date.now() + Math.random();
+      if (amb.fallbackPolyline) { amb.fallbackPolyline.remove(); amb.fallbackPolyline = null; }
+      if (amb.activePolyline) { amb.activePolyline.remove(); amb.activePolyline = null; }
+      enqueueRoute(amb);
+    }
+
+    function fallbackRoute(amb, dest, reqId) {
+      if (amb.routeReqId !== reqId || amb.fallbackActive) return;
+      amb.fallbackActive = true;
+      const steps = 300; const coords = [];
+      const midLat = (amb.lat + dest.lat) / 2, midLng = (amb.lng + dest.lng) / 2;
+      const perp = Math.hypot(dest.lat - amb.lat, dest.lng - amb.lng) * 0.35;
+      const cpLat = midLat + perp, cpLng = midLng - perp * 0.5;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps, mt = 1 - t;
+        coords.push({ lat: mt*mt*amb.lat + 2*mt*t*cpLat + t*t*dest.lat, lng: mt*mt*amb.lng + 2*mt*t*cpLng + t*t*dest.lng });
+      }
+      const pt = amb.patientType;
+      const sev = pt?.severity || 'low';
+      const lc = amb.phase === 'to_incident' ? '#00c8ff' : (sev === 'critical' ? '#ff2040' : sev === 'high' ? '#ff7030' : '#ffa726');
+      if (amb.activePolyline) { amb.activePolyline.remove(); amb.activePolyline = null; }
+      amb.fallbackPolyline = L.polyline(coords.map(c => [c.lat, c.lng]), { color: lc, weight: 2.5, opacity: 0.6, dashArray: '7,7' }).addTo(S.map);
+      amb.routeCoordinates = coords;
+      amb.currentRouteIndex = 0;
+      amb.totalDistance = S.map.distance([amb.lat, amb.lng], [dest.lat, dest.lng]);
+      if (!amb.isMoving) startMovement(amb);
+    }
+
+    // ── Movement — per-ambulance rAF (v9 style) ──
+    function startMovement(amb) {
+      amb.isMoving = true;
+      function tick() {
+        if (!amb.isMoving || !amb.routeCoordinates) return;
+        if (amb.currentRouteIndex >= amb.routeCoordinates.length - 1) {
+          if (amb.phase === 'to_incident') handleIncidentArrival(amb);
+          else handleHospitalArrival(amb);
+          return;
+        }
+        const speed = S.routeSpeedSteps / S.trafficMultiplier;
+        amb.currentRouteIndex += speed;
+        const idx = Math.floor(amb.currentRouteIndex);
+        const coord = amb.routeCoordinates[Math.min(idx, amb.routeCoordinates.length - 1)];
+        amb.lat = coord.lat; amb.lng = coord.lng;
+        if (amb.marker) amb.marker.setLatLng([coord.lat, coord.lng]);
+        if (amb.activePolyline) {
+          const rem = amb.routeCoordinates.slice(idx);
+          if (rem.length > 1) { rem.unshift(coord); amb.activePolyline.setLatLngs(rem); }
+        }
+        if (amb.totalDistance && amb.base_eta && idx % 45 === 0) {
+          const prog = amb.currentRouteIndex / amb.routeCoordinates.length;
+          amb.eta = Math.max(0, Math.round(amb.base_eta * S.trafficMultiplier * (1 - prog)));
+        }
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // ── Phase 1: Arrive at incident ──
+    function handleIncidentArrival(amb) {
+      amb.isMoving = false;
+      if (amb.fallbackPolyline) { amb.fallbackPolyline.remove(); amb.fallbackPolyline = null; }
+      if (amb.activePolyline) { amb.activePolyline.remove(); amb.activePolyline = null; }
+      amb.routeCoordinates = null;
+      amb.lat = amb.incidentLat; amb.lng = amb.incidentLng;
+      if (amb.marker) amb.marker.setLatLng([amb.lat, amb.lng]);
+      amb.status = 'PICKING_UP';
+      if (amb.marker) amb.marker.setIcon(makeAmbIcon(amb));
+      log(`📍 ${amb.id} arrived at incident — picking up patient...`, 'info');
+      showEvent(`📍 ${amb.id} picking up patient`, 'warn');
+      if (amb.isMCI && S.icc.active) { addICCTimeline('PICKUP', `${amb.id} at scene — loading patient`, 'dispatch'); updateICC(); }
+      renderQueuePanel();
+
+      setTimeout(() => {
+        let dec;
+        if (amb.isMCI && S.icc.active) {
+          const mciAssignments = {};
+          S.ambulances.forEach(a => { if (a.isMCI && a.assigned_hospital_id && a.phase === 'to_hospital') mciAssignments[a.assigned_hospital_id] = (mciAssignments[a.assigned_hospital_id] || 0) + 1; });
+          dec = mockDecide(amb, true, mciAssignments);
+        } else {
+          dec = mockDecide(amb);
+        }
+
+        if (dec) {
+          amb.assigned_hospital_id = dec.hospital_id;
+          amb.status = 'EN_ROUTE'; amb.phase = 'to_hospital';
+          amb.decision_reason = dec.reason;
+          amb.base_eta = dec.eta_minutes || 15;
+          amb.eta = Math.round(amb.base_eta * S.trafficMultiplier);
+          const h = S.hospitals.find(x => x.id === dec.hospital_id);
+          log(`🚑 ${amb.id} → ${h?.name ?? '?'} (score:${dec.score})`, 'success');
+          showEvent(`🚑 ${amb.id} → ${h?.name?.split(' ')[0] ?? '?'}`, 'ok');
+          if (amb.marker) amb.marker.setIcon(makeAmbIcon(amb));
+          if (amb.isMCI && S.icc.active) {
+            S.icc.hospAssignments[dec.hospital_id] = (S.icc.hospAssignments[dec.hospital_id] || 0) + 1;
+            addICCTimeline('DISPATCH', `${amb.id} → ${h?.name?.split(' ')[0] ?? '?'} (${amb.patientType?.severity})`, 'dispatch');
+            updateICC();
+          }
+          buildRoute(amb);
+        } else {
+          const ward = nearestWard(amb);
+          if (ward) {
+            amb.assigned_hospital_id = ward.id;
+            amb.status = 'EN_ROUTE'; amb.phase = 'to_hospital';
+            amb.decision_reason = 'Emergency: Nearest available';
+            amb.base_eta = 20; amb.eta = 20;
+            if (amb.marker) amb.marker.setIcon(makeAmbIcon(amb));
+            buildRoute(amb);
+            log(`🚑 ${amb.id} → ${ward.name} (emergency fallback)`, 'warning');
+          } else {
+            log(`❌ ${amb.id}: no hospital available`, 'danger');
+          }
+        }
+        updateMetrics(); updateZoomSelect(); renderQueuePanel(); syncHospitalMarkers();
+      }, 1800);
+    }
+
+    // ── Phase 2: Arrive at hospital ──
+    function handleHospitalArrival(amb) {
+      amb.isMoving = false; amb.status = 'ARRIVED';
+      if (amb.marker) amb.marker.remove();
+      if (amb.fallbackPolyline) amb.fallbackPolyline.remove();
+      if (amb.activePolyline) amb.activePolyline.remove();
+      amb.routeCoordinates = null;
+      const idx = S.ambulances.indexOf(amb);
+      if (idx > -1) S.ambulances.splice(idx, 1);
+      const hosp = S.hospitals.find(h => h.id === amb.assigned_hospital_id);
+      if (hosp) {
+        hosp.current_load = Math.min(100, hosp.current_load + Math.random() * 1.5);
+        if (amb.requires_icu) hosp.icu_beds = Math.max(0, hosp.icu_beds - 1);
+        else hosp.beds = Math.max(0, hosp.beds - 1);
+        updateHospitalMarker(hosp);
+        log(`✅ ${amb.id} arrived at ${hosp.name}`, 'success');
+        showEvent(`✅ ${amb.id} arrived`, 'ok');
+        if (amb.isMCI && S.icc.active) {
+          addICCTimeline('ARRIVAL', `${amb.id} delivered to ${hosp.name.split(' ').slice(0, 2).join(' ')}`, 'arrival');
+          updateICC();
+        }
+      }
+      if (S.zoomTracking === amb.id) stopZoomTracking();
+      if (S.detailAmbId === amb.id) closeDetail();
+      updateMetrics(); renderHospitalList(); updateZoomSelect(); renderQueuePanel(); syncHospitalMarkers();
+    }
+
+    // ══════════════════════════════════════
+    // PANDEMIC
+    // ══════════════════════════════════════
+    let pandemicTimer = null;
+    document.getElementById('pandemic-slider').addEventListener('input', e => { S.pandemicIntensity = parseInt(e.target.value); document.getElementById('pandemic-val').textContent = e.target.value; });
+    document.getElementById('btn-pandemic').addEventListener('click', () => { if (S.pandemicActive) stopPandemic(); else startPandemic(); });
+
+    function startPandemic() {
+      S.pandemicActive = true;
+      document.body.classList.add('pandemic-active');
+      document.getElementById('pandemic-badge').textContent = 'Active';
+      document.getElementById('pandemic-badge').className = 'badge b-err';
+      document.getElementById('btn-pandemic').textContent = '🛑 Stop Pandemic';
+      document.getElementById('btn-pandemic').className = 'btn btn-success btn-sm btn-full';
+      showScenarioBadge('🦠 Pandemic Active — Rerouting Enabled', 'pandemic');
+      log('🦠 PANDEMIC STARTED', 'danger');
+      showEvent('🦠 Pandemic Mode Activated', 'danger');
+      pandemicTimer = setInterval(() => {
+        const intensity = S.pandemicIntensity;
+        let needsReroute = false;
+        S.hospitals.forEach(h => {
+          if (h.status === 'OFFLINE') return;
+          h.current_load = Math.min(100, h.current_load + Math.random() * intensity * 0.8);
+          h.beds = Math.max(0, h.beds - Math.floor(Math.random() * (intensity * 0.4)));
+          if (Math.random() < intensity / 18) h.icu_beds = Math.max(0, h.icu_beds - 1);
+          const wasOverloaded = h.status === 'OVERLOADED';
+          if (h.current_load >= 90) { h.status = 'OVERLOADED'; if (!wasOverloaded) needsReroute = true; }
+          updateHospitalMarker(h);
+        });
+        renderHospitalList(); updateMetrics();
+        if (needsReroute) { log('🔄 Pandemic rerouting…', 'danger'); triggerReroute(); }
+        const overwhelmed = S.hospitals.filter(h => h.current_load >= 90 || h.status === 'OFFLINE').length;
+        const wards = S.hospitals.filter(h => h.type === 'ISOLATION_WARD').length;
+        if (overwhelmed >= S.hospitals.filter(h => h.type !== 'ISOLATION_WARD').length * 0.6 && wards < 4 && Math.random() > 0.7) spawnIsolationWard();
+      }, 3000);
+    }
+
+    function stopPandemic() {
+      S.pandemicActive = false;
+      document.body.classList.remove('pandemic-active');
+      clearInterval(pandemicTimer); pandemicTimer = null;
+      document.getElementById('pandemic-badge').textContent = 'Inactive';
+      document.getElementById('pandemic-badge').className = 'badge b-off';
+      document.getElementById('btn-pandemic').textContent = '🦠 Start Pandemic';
+      document.getElementById('btn-pandemic').className = 'btn btn-danger btn-sm btn-full';
+      hideScenarioBadge();
+      log('🛑 Pandemic stopped', 'success');
+      showEvent('Pandemic Deactivated', 'ok');
+    }
+
+    function spawnIsolationWard() {
+      const id = `WARD-${Math.floor(Math.random() * 9000) + 1000}`;
+      const lat = 17.415 + (Math.random() - 0.5) * 0.12;
+      const lng = 78.455 + (Math.random() - 0.5) * 0.12;
+      const ward = { id, name: `Field Hospital ${id.split('-')[1]}`, type: 'ISOLATION_WARD', lat, lng, status: 'NORMAL', beds: 60, icu_beds: 12, current_load: 0 };
+      S.hospitals.push(ward);
+      addHospitalMarker(ward);
+      log(`🚨 ${ward.name} deployed`, 'danger');
+      showEvent(`⛺ ${ward.name} deployed`, 'warn');
+      renderHospitalList();
+      if (S.pandemicActive) triggerReroute();
+    }
+
+    // ══════════════════════════════════════
+    // TRAFFIC
+    // ══════════════════════════════════════
+    document.getElementById('traffic-slider').addEventListener('input', e => {
+      const v = parseInt(e.target.value) / 10;
+      S.trafficMultiplier = v;
+      document.getElementById('traffic-val').textContent = `${v.toFixed(1)}×`;
+      const badge = document.getElementById('traffic-badge');
+      badge.textContent = v > 2.5 ? 'Heavy' : v > 1.5 ? 'Moderate' : 'Normal';
+      badge.className = `badge ${v > 2.5 ? 'b-err' : v > 1.5 ? 'b-warn' : 'b-off'}`;
+      S.ambulances.forEach(a => { if (a.base_eta) a.eta = Math.round(a.base_eta * v); });
+    });
+
+    document.getElementById('btn-traffic').addEventListener('click', () => {
+      log(`🚦 Traffic → ${S.trafficMultiplier}×`, 'warning');
+      showEvent(`🚦 Traffic: ${S.trafficMultiplier}×`, 'warn');
+      if (S.trafficMultiplier > 2) showScenarioBadge(`🚦 Heavy Traffic — ${S.trafficMultiplier}× delay`, 'traffic');
+      else hideScenarioBadge();
+      triggerReroute();
+    });
+
+    // ══════════════════════════════════════
+    // SPEED
+    // ══════════════════════════════════════
+    document.getElementById('speed-slider').addEventListener('input', e => {
+      const idx = parseInt(e.target.value) - 1;
+      S.routeSpeedSteps = SPEED_TABLE[Math.min(idx, SPEED_TABLE.length - 1)];
+      document.getElementById('speed-val').textContent = S.routeSpeedSteps.toFixed(2);
+    });
+
+    // ══════════════════════════════════════
+    // METRICS
+    // ══════════════════════════════════════
+    function updateMetrics() {
+      const active = S.ambulances.filter(a => a.status === 'EN_ROUTE' || a.status === 'TO_INCIDENT' || a.status === 'PICKING_UP').length;
+      const failed = S.hospitals.filter(h => h.status === 'OFFLINE').length;
+      const overloaded = S.hospitals.filter(h => h.current_load > 90 && h.status !== 'OFFLINE').length;
+      const avg = S.hospitals.length ? S.hospitals.reduce((s, h) => s + h.current_load, 0) / S.hospitals.length : 0;
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      set('active-ambulances', active); set('spawned-total', S.metrics.spawnedTotal);
+      set('reroutes-count', S.metrics.reroutes); set('failed-count', failed);
+      set('avg-load', avg.toFixed(1) + '%'); set('overloaded-count', overloaded);
+      set('top-active', active); set('top-total', S.metrics.spawnedTotal);
+      set('top-reroutes', S.metrics.reroutes); set('top-failed', failed);
+      set('top-load', avg.toFixed(1) + '%');
+      const loadKpi = document.getElementById('top-load');
+      if (loadKpi) loadKpi.className = `kpi-val ${avg > 80 ? 'danger' : avg > 60 ? 'warn' : ''}`;
+      renderQueuePanel(); updateZoomSelect();
+    }
+
+    // ══════════════════════════════════════
+    // QUEUE PANEL
+    // ══════════════════════════════════════
+    function renderQueuePanel() {
+      const panel = document.getElementById('queue-panel');
+      const body = document.getElementById('qp-body');
+      const count = document.getElementById('qp-count');
+      if (!panel || !body) return;
+      const active = S.ambulances.filter(a => a.status === 'EN_ROUTE' || a.status === 'TO_INCIDENT' || a.status === 'PICKING_UP');
+      count.textContent = `${active.length} active`;
+      if (active.length === 0) { panel.classList.add('hidden'); return; }
+      panel.classList.remove('hidden');
+      const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      const sorted = [...active].sort((a, b) => {
+        const ao = sevOrder[a.patientType?.severity] ?? 3;
+        const bo = sevOrder[b.patientType?.severity] ?? 3;
+        return ao !== bo ? ao - bo : a.spawnTime - b.spawnTime;
+      });
+      body.innerHTML = sorted.map(amb => {
+        const pt = amb.patientType || PATIENT_TYPES[7];
+        const h = S.hospitals.find(x => x.id === amb.assigned_hospital_id);
+        let destText, phaseClass = '';
+        if (amb.status === 'TO_INCIDENT') { destText = `<span style="color:#00c8ff">→ 🚨 Incident</span>`; phaseClass = ' phase-pickup'; }
+        else if (amb.status === 'PICKING_UP') { destText = `<span style="color:#ffcc00">⏳ Picking up...</span>`; phaseClass = ' phase-pickup'; }
+        else { destText = `→ ${h ? h.name.split(' ')[0] : '?'} (${amb.eta ?? '?'}m)`; }
+        return `<div class="qp-item sev-${pt.severity}${phaseClass}">
+          <span class="qp-icon">${pt.icon}</span>
+          <div class="qp-info">
+            <div class="qp-amb">${amb.id}</div>
+            <div class="qp-type">${pt.type} ${destText}</div>
+          </div>
+          <span class="qp-sev">${pt.severity}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ══════════════════════════════════════
+    // HOSPITAL LIST
+    // ══════════════════════════════════════
+    function renderHospitalList() {
+      const el = document.getElementById('hospital-list'); if (!el) return;
+      el.innerHTML = S.hospitals.map(h => {
+        const load = Math.min(100, h.current_load);
+        const barColor = load > 90 ? 'var(--danger)' : load > 70 ? 'var(--warn)' : 'var(--ok)';
+        const badgeCls = h.status === 'OFFLINE' ? 'b-err' : h.status === 'OVERLOADED' ? 'b-warn' : 'b-ok';
+        const enRoute = S.ambulances.filter(a => a.assigned_hospital_id === h.id && a.status === 'EN_ROUTE').length;
+        return `<div class="h-item">
+          <div class="h-row1"><div class="h-name">${h.name}</div><span class="badge ${badgeCls}">${h.status}</span></div>
+          <div class="h-bar-wrap">
+            <div class="h-bar-label"><span>Load</span><span style="color:${barColor};font-weight:700">${load.toFixed(0)}%${enRoute ? ` · <span style="color:var(--accent)">${enRoute} en route</span>` : ''}</span></div>
+            <div class="h-bar-bg"><div class="h-bar-fill" style="width:${load}%;background:${barColor}"></div></div>
+          </div>
+          <div class="h-stats"><span>🛏 ${h.beds}</span><span>🚑 ICU ${h.icu_beds}</span></div>
+          <div class="h-actions">
+            <button class="btn btn-danger btn-xs" onclick="overrideH('${h.id}',{status:'OFFLINE'})">Fail</button>
+            <button class="btn btn-warn btn-xs" onclick="overrideH('${h.id}',{current_load_score:99,available_icu_beds:0})">ICU Crash</button>
+            <button class="btn btn-success btn-xs" onclick="overrideH('${h.id}',{status:'NORMAL',current_load_score:50,available_beds:150,available_icu_beds:25})">Recover</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    window.overrideH = function (id, updates) {
+      const h = S.hospitals.find(x => x.id === id); if (!h) return;
+      if (updates.status !== undefined) h.status = updates.status;
+      if (updates.current_load_score !== undefined) h.current_load = Math.min(100, Math.max(0, updates.current_load_score));
+      if (updates.available_beds !== undefined) h.beds = Math.max(0, updates.available_beds);
+      if (updates.available_icu_beds !== undefined) h.icu_beds = Math.max(0, updates.available_icu_beds);
+      updateHospitalMarker(h); renderHospitalList();
+      log(`🛠 Override: ${h.name} → ${updates.status ?? 'updated'}`, 'warning');
+      showEvent(`🛠 ${h.name.split(' ')[0]} → ${updates.status ?? 'updated'}`, 'warn');
+      triggerReroute();
+    };
+
+    document.getElementById('recover-all').addEventListener('click', () => {
+      S.hospitals.forEach(h => overrideH(h.id, { status: 'NORMAL', current_load_score: 45, available_beds: 150, available_icu_beds: 25 }));
+      log('✅ All hospitals recovering', 'success');
+      showEvent('✅ All hospitals recovered', 'ok');
+    });
+
+    // Hospital visibility toggle
+    document.getElementById('toggle-all-hospitals').addEventListener('click', e => {
+      S.showAllHospitals = !S.showAllHospitals;
+      e.target.textContent = S.showAllHospitals ? '👁 Hide All' : '👁 Show All';
+      e.target.className = S.showAllHospitals ? 'btn btn-ghost btn-xs' : 'btn btn-info btn-xs';
+      syncHospitalMarkers();
+      log(S.showAllHospitals ? '👁 Showing all hospitals on map' : '👁 Showing only active hospitals', 'info');
+    });
+
+    // ══════════════════════════════════════
+    // KEYBOARD SHORTCUTS (from v9)
+    // ══════════════════════════════════════
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (S.placementMode) { exitPlacementMode(); return; }
+        if (S.detailAmbId) closeDetail();
+      }
+    });
+
+    // ══════════════════════════════════════
+    // INIT
+    // ══════════════════════════════════════
+    async function init() {
+      initMap();
+      log('🔄 Connecting to hospital network…', 'info');
+      try {
+        const res = await fetch('http://localhost:3000/hospitals/state/all');
+        if (!res.ok) throw new Error('API Connection Failed');
+        const data = await res.json();
+        S.hospitals = Object.values(data).map(h => ({
+          id: h.hospital_id, name: h.name, type: h.type || 'GENERAL',
+          lat: parseFloat(h.latitude), lng: parseFloat(h.longitude),
+          status: h.status || 'NORMAL', beds: h.total_beds || 150,
+          icu_beds: h.icu_beds || 30,
+          current_load: h.current_load_score || Math.min(95, Math.floor(Math.random() * 40 + 20))
+        }));
+        if (S.hospitals.length === 0) throw new Error('No hospitals in DB');
+      } catch (e) {
+        log(`❌ ${e.message} — using offline mode`, 'warning');
+        S.hospitals = MOCK_HOSPITALS.map(h => ({ ...h }));
+      }
+      // Show all hospitals on init (v9 behaviour)
+      S.hospitals.forEach(addHospitalMarker);
+      S.showAllHospitals = true;
+      document.getElementById('toggle-all-hospitals').textContent = '👁 Hide All';
+      document.getElementById('toggle-all-hospitals').className = 'btn btn-ghost btn-xs';
+      renderHospitalList(); updateMetrics();
+      log(`✅ ${S.hospitals.length} hospitals loaded`, 'success');
+      log('🚀 DisasterOS v10 — Dispatch + Mass Incident + Pandemic ready', 'success');
+      const idx = parseInt(document.getElementById('speed-slider').value) - 1;
+      S.routeSpeedSteps = SPEED_TABLE[idx] || 0.12;
+      document.getElementById('speed-val').textContent = S.routeSpeedSteps.toFixed(2);
+    }
+
+    // ── Load Leaflet ──
+    (function loadLeaflet() {
+      function loadScript(src, cb) { const s = document.createElement('script'); s.src = src; s.onload = cb; document.head.appendChild(s); }
+      function loadCSS(href) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l); }
+      if (typeof L !== 'undefined') { init(); return; }
+      loadCSS('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+      loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', init);
+    })();
+
+    window.addEventListener('beforeunload', () => {
+      if (randomIncidentTimer && randomIncidentTimer !== true) clearTimeout(randomIncidentTimer);
+      if (S.icc.updateInterval) clearInterval(S.icc.updateInterval);
+      if (S.icc.elapsedInterval) clearInterval(S.icc.elapsedInterval);
+      if (pandemicTimer) clearInterval(pandemicTimer);
+      if (S.zoomInterval) clearInterval(S.zoomInterval);
+    });
+  </script>
+</body>
+
+</html>

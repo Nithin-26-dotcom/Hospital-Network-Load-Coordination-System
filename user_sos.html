@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency SOS Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .map-container {
+            height: 60vh;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Pulse Ring for User Marker */
+        .user-pulse {
+            width: 20px;
+            height: 20px;
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 50%;
+            border: 3px solid #3b82f6;
+            animation: ringPulse 2s infinite;
+        }
+
+        @keyframes ringPulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(3);
+                opacity: 0;
+            }
+        }
+
+        /* Ambulance pulse ring animation */
+        @keyframes ambRing {
+            0% {
+                transform: scale(1);
+                opacity: 0.7;
+            }
+
+            100% {
+                transform: scale(2.4);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body class="h-screen flex flex-col items-center p-4">
+
+    <!-- HEADER / STATUS -->
+    <div class="w-full max-w-md space-y-4 z-10">
+
+        <!-- INITIAL SOS BUTTON -->
+        <div id="sos-start-view" class="flex flex-col items-center justify-center h-[80vh] space-y-8">
+            <h1 class="text-4xl font-black text-red-500 tracking-tighter uppercase drop-shadow-lg">Emergency SOS</h1>
+            <p class="text-slate-400 text-center text-sm px-6">Press only in case of critical emergency. Location will
+                be shared with nearest dispatch.</p>
+
+            <div class="relative group cursor-pointer">
+                <div class="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-20 duration-1000"></div>
+                <button onclick="initiateSOS()" id="sosBtn"
+                    class="relative w-56 h-56 rounded-full bg-gradient-to-b from-red-600 to-red-900 border-8 border-slate-800 shadow-2xl
+                           flex flex-col items-center justify-center transform transition-transform active:scale-95 group-hover:scale-105">
+                    <i class="fa-solid fa-tower-broadcast text-6xl text-white drop-shadow-md mb-2"></i>
+                    <span class="text-2xl font-bold text-white tracking-widest">SOS</span>
+                </button>
+            </div>
+            <div id="loc-status" class="text-xs font-mono text-slate-500">Waiting for user action...</div>
+        </div>
+
+        <!-- TRACKER DASHBOARD (Hidden Initially) -->
+        <div id="tracker-view" class="hidden w-full flex-col space-y-4">
+
+            <!-- STATUS CARD -->
+            <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
+                <div>
+                    <h2 class="text-xs text-slate-400 uppercase tracking-widest font-semibold">Status</h2>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="relative flex h-3 w-3">
+                            <span id="status-dot-ping"
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                            <span id="status-dot-color"
+                                class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                        </span>
+                        <span id="status-text" class="font-bold text-lg text-white">Searching...</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-slate-400 uppercase tracking-widest">Unit</div>
+                    <div id="amb-id" class="font-mono text-lg text-blue-400">---</div>
+                </div>
+            </div>
+
+            <!-- MAP -->
+            <div class="map-container border border-slate-700">
+                <div id="map" class="w-full h-full bg-slate-800"></div>
+                <!-- OVERLAY ALERTS -->
+                <div id="map-overlay"
+                    class="absolute inset-0 bg-slate-900/80 z-[1000] hidden flex flex-col items-center justify-center text-center p-6">
+                    <i class="fa-solid fa-triangle-exclamation text-4xl text-yellow-500 mb-4 animate-bounce"></i>
+                    <h3 class="text-xl font-bold text-white mb-2">Ambulance Breakdown</h3>
+                    <p class="text-slate-300 text-sm">The assigned unit has reported a technical failure.</p>
+                    <div class="mt-4 flex items-center gap-2 text-blue-400 text-xs font-mono">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i> SEARCHING FOR NEW UNIT...
+                    </div>
+                </div>
+            </div>
+
+            <!-- ETA / DISTANCE -->
+            <div id="eta-panel" class="glass-panel p-4 rounded-xl hidden">
+                <div class="flex justify-between items-end mb-2">
+                    <div>
+                        <div class="text-xs text-slate-400 uppercase tracking-widest">Estimated Arrival</div>
+                        <div class="text-3xl font-bold text-white font-mono"><span id="eta-mins">--</span> <span
+                                class="text-sm text-slate-500">min</span></div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-400 uppercase tracking-widest">Distance</div>
+                        <div class="text-xl font-bold text-blue-400 font-mono"><span id="dist-km">--</span> <span
+                                class="text-sm text-slate-500">km</span></div>
+                    </div>
+                </div>
+                <!-- Progress Bar -->
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="bg-blue-500 h-full w-0 transition-all duration-1000"></div>
+                </div>
+            </div>
+
+            <!-- CANCEL SOS BUTTON -->
+            <button onclick="cancelSOS()"
+                class="w-full mt-2 py-3 rounded-xl border border-red-700 text-red-400 text-sm font-semibold tracking-widest uppercase
+                       hover:bg-red-900/40 active:scale-95 transition-all duration-150 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-xmark"></i> Cancel SOS
+            </button>
+
+        </div>
+    </div>
+
+    <!-- CANCEL CONFIRMATION MODAL -->
+    <div id="cancel-modal"
+        class="fixed inset-0 z-[2000] hidden items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-xs space-y-4 text-center">
+            <i class="fa-solid fa-triangle-exclamation text-3xl text-yellow-400"></i>
+            <h3 class="text-lg font-bold text-white">Cancel Emergency?</h3>
+            <p class="text-slate-400 text-sm">Are you sure you want to cancel the SOS request? This will stop the
+                ambulance dispatch process.</p>
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeCancelModal()"
+                    class="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold transition-colors">
+                    Keep SOS
+                </button>
+                <button onclick="confirmCancel()"
+                    class="flex-1 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-white text-sm font-semibold transition-colors">
+                    Yes, Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+
+        // State
+        let currentRequestId = null;
+        let userLat = null, userLng = null;
+        let pollInterval = null;
+        let map = null;
+        let userMarker = null;
+        let ambulanceMarker = null;
+        let routeLayer = null;
+
+        let lastAmbLat = null;
+        let lastAmbLng = null;
+        let isArrived = false;
+
+        // --- 1. INITIALIZE SOS ---
+        function initiateSOS() {
+            const btn = document.getElementById('sosBtn');
+            const statusTxt = document.getElementById('loc-status');
+
+            if (!navigator.geolocation) {
+                alert("Geolocation is required.");
+                return;
+            }
+
+            btn.classList.add('pointer-events-none', 'grayscale');
+            statusTxt.textContent = "Acquiring accurate GPS lock...";
+
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                userLat = pos.coords.latitude;
+                userLng = pos.coords.longitude;
+                statusTxt.textContent = `GPS Locked: ${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+
+                try {
+                    const res = await fetch(`${API_BASE}/sos/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ latitude: userLat, longitude: userLng })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        currentRequestId = data.request_id;
+                        startTrackingMode();
+                    } else {
+                        throw new Error("Server rejected request");
+                    }
+                } catch (e) {
+                    alert("Failed to send SOS: " + e.message);
+                    btn.classList.remove('pointer-events-none', 'grayscale');
+                }
+            }, (err) => {
+                alert("GPS Error: " + err.message);
+                btn.classList.remove('pointer-events-none', 'grayscale');
+            }, { enableHighAccuracy: true });
+        }
+
+        // --- 2. TRACKING VIEW ---
+        function startTrackingMode() {
+            document.getElementById('sos-start-view').classList.add('hidden');
+            document.getElementById('tracker-view').classList.remove('hidden');
+            document.getElementById('tracker-view').classList.add('flex');
+
+            initMap();
+            startPolling();
+        }
+
+        function initMap() {
+            if (map) return;
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([userLat, userLng], 15);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // User Pulse Marker
+            const userIcon = L.divIcon({
+                className: 'user-pulse',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+            userMarker = L.marker([userLat, userLng], { icon: userIcon }).addTo(map);
+        }
+
+        // --- 3. POLLING LOOP ---
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(checkStatus, 2000); // 2s polling
+            checkStatus(); // Immediate check
+        }
+
+        async function checkStatus() {
+            if (!currentRequestId) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/sos/${currentRequestId}`);
+                if (!res.ok) return; // Silent fail
+
+                const data = await res.json();
+                handleStatusUpdate(data);
+
+            } catch (e) { console.error("Poll error", e); }
+        }
+
+        // --- 4. STATUS LOGIC ---
+        function handleStatusUpdate(data) {
+            const statusText = document.getElementById('status-text');
+            const ambIdDisplay = document.getElementById('amb-id');
+            const dotColor = document.getElementById('status-dot-color');
+            const dotPing = document.getElementById('status-dot-ping');
+            const etaPanel = document.getElementById('eta-panel');
+            const overlay = document.getElementById('map-overlay');
+
+            // CASE: ASSIGNED
+            if (data.request_status === 'ASSIGNED' && data.assigned_ambulance_id) {
+                overlay.classList.add('hidden'); // Hide breakdown overlay
+
+                ambIdDisplay.textContent = data.registration_number || 'UNIT-' + data.assigned_ambulance_id.substr(0, 4);
+
+                // Update Ambulance Position (Smooth)
+                updateAmbulanceMarker(data.ambulance_lat, data.ambulance_lng);
+
+                // Calculate Route & ETA (OSRM)
+                if (data.ambulance_lat && data.ambulance_lng) {
+                    fetchRouteAndETA(data.ambulance_lat, data.ambulance_lng);
+                }
+
+                // UI Updates
+                if (!isArrived) {
+                    statusText.textContent = "AMBULANCE EN ROUTE";
+                    statusText.className = "font-bold text-lg text-blue-400";
+                    dotColor.className = "relative inline-flex rounded-full h-3 w-3 bg-blue-500";
+                    dotPing.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75";
+                    etaPanel.classList.remove('hidden');
+                }
+
+            }
+            // CASE: OPEN (Was assigned, now null -> Breakdown/Unassigned)
+            else if (data.request_status === 'OPEN' && ambulanceMarker) {
+                // Breakdown detected (We had a marker, now we are OPEN)
+                overlay.classList.remove('hidden');
+                statusText.textContent = "SEARCHING...";
+                statusText.className = "font-bold text-lg text-yellow-500";
+
+                // Remove ambulance marker and route
+                if (ambulanceMarker) { map.removeLayer(ambulanceMarker); ambulanceMarker = null; }
+                if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+                etaPanel.classList.add('hidden');
+
+                lastAmbLat = null; // Reset
+            }
+        }
+
+        // --- 5. MARKER MOVEMENT & ARRIVAL ---
+        let initialRouteDist = null;
+        let activeAnimation = null;
+
+        function updateAmbulanceMarker(lat, lng) {
+            if (!lat || !lng) return;
+
+            const distToUser = getDistanceFromLatLonInKm(lat, lng, userLat, userLng);
+            if (distToUser < 0.03) {
+                handleArrival();
+                return;
+            }
+
+            if (!ambulanceMarker) {
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center;">
+                               <div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,130,246,0.2);animation:ambRing 1.4s ease-out infinite;"></div>
+                               <div style="width:38px;height:38px;background:#1d4ed8;border:3px solid #93c5fd;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 16px rgba(59,130,246,0.9);">&#x1F691;</div>
+                           </div>`,
+                    iconSize: [48, 48],
+                    iconAnchor: [24, 24]
+                });
+                ambulanceMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(map);
+                // Fit map to show both markers
+                map.fitBounds([[userLat, userLng], [lat, lng]], { padding: [60, 60], maxZoom: 15 });
+            } else {
+                smoothMove(ambulanceMarker, lat, lng, 1800);
+            }
+
+            lastAmbLat = lat;
+            lastAmbLng = lng;
+        }
+
+        // --- 6. OSRM ROUTING ---
+        let isFetchingRoute = false;
+
+        async function fetchRouteAndETA(ambLat, ambLng) {
+            if (isFetchingRoute) return;
+
+            // Skip refetch if moved less than 50m and route already drawn
+            if (lastAmbLat !== null && routeLayer) {
+                const moved = getDistanceFromLatLonInKm(ambLat, ambLng, lastAmbLat, lastAmbLng);
+                if (moved < 0.05) return;
+            }
+
+            isFetchingRoute = true;
+            const url = `https://router.project-osrm.org/route/v1/driving/${ambLng},${ambLat};${userLng},${userLat}?overview=full&geometries=geojson`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.routes && data.routes.length > 0) {
+                    const route = data.routes[0];
+                    const latLngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                    // Remaining route = solid blue line from ambulance to user
+                    if (routeLayer) map.removeLayer(routeLayer);
+                    routeLayer = L.polyline(latLngs, {
+                        color: '#3b82f6',
+                        weight: 5,
+                        opacity: 0.9
+                    }).addTo(map);
+
+                    // Store initial distance on first call for progress bar
+                    if (!initialRouteDist) initialRouteDist = route.distance;
+
+                    const mins = Math.ceil(route.duration / 60);
+                    const km = (route.distance / 1000).toFixed(1);
+                    document.getElementById('eta-mins').textContent = mins;
+                    document.getElementById('dist-km').textContent = km;
+
+                    const pct = initialRouteDist
+                        ? Math.max(5, Math.min(95, (1 - route.distance / initialRouteDist) * 100))
+                        : 5;
+                    document.getElementById('progress-bar').style.width = `${pct}%`;
+                }
+            } catch (e) { console.error("OSRM error", e); }
+            finally { isFetchingRoute = false; }
+        }
+
+        // --- 7. SMOOTH MOVEMENT HELPER (ease-in-out cubic, map follow) ---
+        function smoothMove(marker, targetLat, targetLng, duration) {
+            if (activeAnimation) cancelAnimationFrame(activeAnimation);
+
+            const { lat: startLat, lng: startLng } = marker.getLatLng();
+            const startTime = performance.now();
+
+            function animate(time) {
+                const t = Math.min((time - startTime) / duration, 1);
+                // Ease-in-out cubic
+                const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+                const newLat = startLat + (targetLat - startLat) * e;
+                const newLng = startLng + (targetLng - startLng) * e;
+                marker.setLatLng([newLat, newLng]);
+
+                // Map follows the ambulance
+                map.panTo([newLat, newLng], { animate: false });
+
+                if (t < 1) {
+                    activeAnimation = requestAnimationFrame(animate);
+                } else {
+                    activeAnimation = null;
+                }
+            }
+            activeAnimation = requestAnimationFrame(animate);
+        }
+
+
+        // --- 8. ARRIVAL HANDLING ---
+        function handleArrival() {
+            if (isArrived) return;
+            isArrived = true;
+
+            clearInterval(pollInterval); // Stop polling
+
+            // UI
+            const statusText = document.getElementById('status-text');
+            statusText.textContent = "AMBULANCE ARRIVED";
+            statusText.className = "font-bold text-lg text-green-500 animate-pulse";
+
+            document.getElementById('status-dot-color').className = "relative inline-flex rounded-full h-3 w-3 bg-green-500";
+            document.getElementById('status-dot-ping').classList.add('hidden'); // Stop pulsing
+
+            document.getElementById('eta-panel').classList.add('hidden');
+
+            if (routeLayer) map.removeLayer(routeLayer);
+
+            // Center on user
+            map.setView([userLat, userLng], 18);
+
+            if (ambulanceMarker) {
+                ambulanceMarker.setLatLng([userLat, userLng]);
+                ambulanceMarker.bindPopup("Arrived!").openPopup();
+            }
+        }
+
+        // --- 9. CANCEL SOS ---
+        function cancelSOS() {
+            // Show confirmation modal
+            const modal = document.getElementById('cancel-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeCancelModal() {
+            const modal = document.getElementById('cancel-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function confirmCancel() {
+            closeCancelModal();
+
+            // Stop polling immediately
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            if (activeAnimation) { cancelAnimationFrame(activeAnimation); activeAnimation = null; }
+
+            // Notify backend (fire-and-forget; don't block UI on network failure)
+            if (currentRequestId) {
+                fetch(`${API_BASE}/sos/${currentRequestId}/cancel`, { method: 'POST' })
+                    .catch(e => console.warn('Cancel notify failed:', e));
+            }
+
+            // Clean up map layers
+            if (map) {
+                if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+                if (ambulanceMarker) { map.removeLayer(ambulanceMarker); ambulanceMarker = null; }
+                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+                map.remove();
+                map = null;
+            }
+
+            // Reset all state
+            currentRequestId = null;
+            userLat = null; userLng = null;
+            lastAmbLat = null; lastAmbLng = null;
+            isArrived = false;
+            isFetchingRoute = false;
+            initialRouteDist = null;
+
+            // Reset status UI
+            document.getElementById('status-text').textContent = 'Searching...';
+            document.getElementById('status-text').className = 'font-bold text-lg text-white';
+            document.getElementById('amb-id').textContent = '---';
+            document.getElementById('eta-panel').classList.add('hidden');
+            document.getElementById('map-overlay').classList.add('hidden');
+            document.getElementById('progress-bar').style.width = '0%';
+
+            // Switch back to start view
+            const trackerView = document.getElementById('tracker-view');
+            trackerView.classList.add('hidden');
+            trackerView.classList.remove('flex');
+
+            const startView = document.getElementById('sos-start-view');
+            startView.classList.remove('hidden');
+
+            // Re-enable SOS button
+            const btn = document.getElementById('sosBtn');
+            btn.classList.remove('pointer-events-none', 'grayscale');
+            document.getElementById('loc-status').textContent = 'Waiting for user action...';
+        }
+
+        // --- UTILS ---
+        function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+            var R = 6371; // Radius of the earth in km
+            var dLat = deg2rad(lat2 - lat1);
+            var dLon = deg2rad(lon2 - lon1);
+            var a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var d = R * c;
+            return d;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+    </script>
+</body>
+
+</html>
